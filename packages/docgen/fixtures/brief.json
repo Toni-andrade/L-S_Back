@@ -1,0 +1,15 @@
+{
+  "clientName": "Maria Silva",
+  "salutation": "Maria",
+  "totalAum": 500000,
+  "currency": "USD",
+  "riskProfile": "moderado",
+  "monthYear": "Julho 2026",
+  "strategies": [
+    { "key": "NEUTRAL", "weight": 40, "riskLabel": null, "returnSource": "library", "asOfDate": null },
+    { "key": "FUNDAMENTALS_CONSERVATIVE", "weight": 30, "riskLabel": null, "returnSource": "library", "asOfDate": null },
+    { "key": "CASH_SIGNAL", "weight": 20, "riskLabel": "Moderado", "returnSource": "library", "asOfDate": null },
+    { "key": "OURO", "weight": 10, "riskLabel": "Moderado", "returnSource": "library", "asOfDate": null }
+  ],
+  "notes": null
+}

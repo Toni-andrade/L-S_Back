@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@ls/addepar": "workspace:*",
+    "@ls/docgen": "workspace:*",
     "@ls/domain": "workspace:*",
     "@supabase/ssr": "^0.6.1",
     "@supabase/supabase-js": "^2.49.0",

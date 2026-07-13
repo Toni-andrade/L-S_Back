@@ -190,4 +190,118 @@ export function evaluatePortfolioFlags(input: PortfolioFlagInput): Flag[] {
   return flags;
 }
 
+// ---------------------------------------------------------------------------
+// Proposal flags (Sections 8 + 9). Same engine philosophy, different
+// severities: BLOCKED_ISSUER and US_SITUS_BR_CLIENT are BLOCKERS on
+// proposals; INDICATIVE_DATA blocks until refreshed or acknowledged with a
+// reason. Blockers gate proposal approval, nothing else.
+// ---------------------------------------------------------------------------
+
+export type ProposalStrategyLike = {
+  key: string;
+  name: string;
+  weight: number;
+  /** Instrument symbols the strategy holds (from strategies.instruments). */
+  symbols: string[];
+  /** Where the return figures came from: library metrics or manual entry. */
+  returnSource: "library" | "manual";
+  /** As-of date for manually entered figures (required; missing = flag). */
+  asOfDate: string | null;
+};
+
+export type ProposalFlagInput = {
+  /** Null for prospect proposals with no client row yet. */
+  client: ClientLike | null;
+  riskProfile: RiskProfileBand;
+  /** Risk profile of the selected model, when one was picked. */
+  modelRiskProfile: RiskProfileBand | null;
+  strategies: ProposalStrategyLike[];
+  blockedIssuers: BlockedIssuerLike[];
+  today: Date;
+  /** Figures older than this many business days are indicative (default 5). */
+  indicativeDataBusinessDays?: number;
+};
+
+export function evaluateProposalFlags(input: ProposalFlagInput): Flag[] {
+  const flags: Flag[] = [];
+  const staleDays = input.indicativeDataBusinessDays ?? 5;
+
+  const allSymbols = input.strategies.flatMap((s) =>
+    s.symbols.map((sym) => ({ strategy: s, symbol: sym.toUpperCase() })),
+  );
+
+  // US_SITUS_BR_CLIENT: blocker on proposals
+  const brExposed =
+    input.client &&
+    (input.client.isBrazilTaxpayer ||
+      (input.client.isUsNra && input.client.domicileCountry === "BR"));
+  if (brExposed) {
+    const hits = allSymbols.filter((e) =>
+      (US_SITUS_INSTRUMENTS as readonly string[]).includes(e.symbol),
+    );
+    if (hits.length > 0) {
+      const symbols = [...new Set(hits.map((h) => h.symbol))].join(", ");
+      flags.push({
+        code: "US_SITUS_BR_CLIENT",
+        severity: "blocker",
+        message: `Proposal includes US-situs instruments (${symbols}) for a Brazil-exposed client, creating US estate-tax exposure. UCITS alternatives: ${UCITS_GOLD_ALTERNATIVES.join(", ")}.`,
+      });
+    }
+  }
+
+  // BLOCKED_ISSUER: blocker on proposals
+  const activeIssuers = input.blockedIssuers.filter((b) => b.active);
+  const hitIssuers = new Set<string>();
+  for (const entry of allSymbols) {
+    for (const issuer of activeIssuers) {
+      if (issuer.ticker && entry.symbol === issuer.ticker.toUpperCase()) {
+        hitIssuers.add(issuer.name);
+      }
+    }
+  }
+  for (const strategy of input.strategies) {
+    for (const issuer of activeIssuers) {
+      if (strategy.name.toLowerCase().includes(issuer.name.toLowerCase())) {
+        hitIssuers.add(issuer.name);
+      }
+    }
+  }
+  for (const name of hitIssuers) {
+    flags.push({
+      code: "BLOCKED_ISSUER",
+      severity: "blocker",
+      message: `Proposal includes an instrument matching blocked issuer "${name}".`,
+    });
+  }
+
+  // INDICATIVE_DATA: manual figures need a source date within N business days
+  for (const s of input.strategies) {
+    if (s.returnSource !== "manual") continue;
+    if (!s.asOfDate) {
+      flags.push({
+        code: "INDICATIVE_DATA",
+        severity: "blocker",
+        message: `${s.name}: manually entered figures have no source date. Add an as-of date or acknowledge with a reason.`,
+      });
+    } else if (isOlderThanBusinessDays(new Date(s.asOfDate), staleDays, input.today)) {
+      flags.push({
+        code: "INDICATIVE_DATA",
+        severity: "blocker",
+        message: `${s.name}: figures dated ${s.asOfDate} are older than ${staleDays} business days. Refresh or acknowledge with a reason.`,
+      });
+    }
+  }
+
+  // PROFILE_MISMATCH: brief profile vs selected model profile
+  if (input.modelRiskProfile && input.modelRiskProfile !== input.riskProfile) {
+    flags.push({
+      code: "PROFILE_MISMATCH",
+      severity: "warning",
+      message: `Brief risk profile "${input.riskProfile}" differs from the selected model's profile "${input.modelRiskProfile}".`,
+    });
+  }
+
+  return flags;
+}
+
 export { riskBand };
