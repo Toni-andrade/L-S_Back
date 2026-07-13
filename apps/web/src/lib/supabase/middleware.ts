@@ -3,7 +3,14 @@ import { NextResponse, type NextRequest } from "next/server";
 
 type CookieToSet = { name: string; value: string; options?: CookieOptions };
 
-const PUBLIC_PATHS = ["/login", "/auth"];
+/**
+ * /api is exempt from the redirect-to-login: every API route enforces its own
+ * auth (intake verifies the HMAC signature, the cron route checks CRON_SECRET,
+ * export/download routes check the session and return 401/403 JSON). A
+ * redirect here would break the public webhook and Vercel Cron, which send no
+ * session cookie.
+ */
+const PUBLIC_PATHS = ["/login", "/auth", "/api"];
 
 function isPublic(pathname: string) {
   return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
