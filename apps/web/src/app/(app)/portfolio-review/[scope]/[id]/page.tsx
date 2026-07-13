@@ -1,5 +1,6 @@
 import {
   computePortfolioChanges,
+  computeRealizedStats,
   computeRiskScore,
   formatCurrencyUS,
   formatPercentUS,
@@ -56,13 +57,15 @@ export default async function ReviewPage({
   if (!entity) notFound();
 
   const snapshot = asOf ? await snapshotByDate(asOf) : await latestSnapshot();
-  const [holdings, factors, flags, review, sync, perf, dates, accountsCount] = await Promise.all([
+  const [holdings, factors, flags, review, sync, perf, perfOneYear, dates, accountsCount] =
+    await Promise.all([
     snapshot ? holdingsForScope(scope, id, snapshot.id) : Promise.resolve([]),
     riskFactors(),
     flagsForScope(scope, id),
     lastReview(scope, id),
     lastSyncJob(),
     performanceSeries(scope, id, period),
+    performanceSeries(scope, id, "one_year"),
     snapshotDates(),
     supabase
       .from("accounts")
@@ -80,6 +83,12 @@ export default async function ReviewPage({
   const allocation = [...byClass.entries()]
     .map(([assetClass, marketValue]) => ({ assetClass, marketValue }))
     .sort((a, b) => b.marketValue - a.marketValue);
+
+  // Realized stats from the trailing-1Y TWR series (Phase 4); shown only with
+  // enough observations. Never computed from assumptions.
+  const realized = computeRealizedStats(
+    perfOneYear.map((p) => ({ asOf: p.as_of, cumulative: p.twr })),
+  );
 
   const risk = computeRiskScore(
     holdings.map((h) => ({
@@ -243,6 +252,15 @@ export default async function ReviewPage({
                     Expected volatility ≈ {formatPercentUS(risk.expectedVol, 1)} (simplified,
                     correlations not modeled)
                   </p>
+                  {realized ? (
+                    <p className="text-xs text-slate-500">
+                      Realized (1Y, {realized.observations} obs): vol{" "}
+                      {formatPercentUS(realized.annualizedVol * 100, 1)}
+                      {realized.sharpe !== null
+                        ? `, Sharpe ${realized.sharpe.toFixed(2)}`
+                        : ""}
+                    </p>
+                  ) : null}
                   {assignedProfile ? (
                     <p className="text-xs text-slate-500">
                       Assigned profile: <span className="font-medium">{assignedProfile}</span>

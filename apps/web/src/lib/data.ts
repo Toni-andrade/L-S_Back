@@ -275,6 +275,57 @@ export async function ticketRailCounts(): Promise<
   ];
 }
 
+// ---------------------------------------------------------------------------
+// Firm dashboard (Phase 4): total AUM, AUM by advisor, open flags
+// ---------------------------------------------------------------------------
+
+export async function firmAum(): Promise<{
+  total: number;
+  asOf: string;
+  byAdvisor: { advisor: string; mv: number }[];
+} | null> {
+  const snapshot = await latestSnapshot();
+  if (!snapshot) return null;
+
+  const supabase = await createClient();
+  const [{ data: holdings }, { data: accounts }, { data: clients }, { data: users }] =
+    await Promise.all([
+      supabase.from("holdings").select("account_id, market_value").eq("snapshot_id", snapshot.id),
+      supabase.from("accounts").select("id, client_id"),
+      supabase.from("clients").select("id, advisor_id"),
+      supabase.from("users").select("id, name, email"),
+    ]);
+  if (!holdings || holdings.length === 0) return null;
+
+  const clientByAccount = new Map((accounts ?? []).map((a) => [a.id, a.client_id]));
+  const advisorByClient = new Map((clients ?? []).map((c) => [c.id, c.advisor_id]));
+  const nameByUser = new Map((users ?? []).map((u) => [u.id, u.name || u.email]));
+
+  let total = 0;
+  const byAdvisorMap = new Map<string, number>();
+  for (const h of holdings) {
+    const mv = Number(h.market_value);
+    total += mv;
+    const clientId = clientByAccount.get(h.account_id);
+    const advisorId = clientId ? advisorByClient.get(clientId) : null;
+    const label = advisorId ? (nameByUser.get(advisorId) ?? "Unknown advisor") : "Unassigned";
+    byAdvisorMap.set(label, (byAdvisorMap.get(label) ?? 0) + mv);
+  }
+  const byAdvisor = [...byAdvisorMap.entries()]
+    .map(([advisor, mv]) => ({ advisor, mv }))
+    .sort((a, b) => b.mv - a.mv);
+  return { total, asOf: snapshot.as_of, byAdvisor };
+}
+
+export async function openFlagsCount(): Promise<number> {
+  const supabase = await createClient();
+  const { count } = await supabase
+    .from("portfolio_flags")
+    .select("id", { count: "exact", head: true })
+    .is("acknowledged_at", null);
+  return count ?? 0;
+}
+
 export function addeparConfigured(): boolean {
   return Boolean(
     process.env.ADDEPAR_SUBDOMAIN &&

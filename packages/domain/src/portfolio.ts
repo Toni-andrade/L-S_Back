@@ -126,6 +126,69 @@ export function computePortfolioChanges(
 }
 
 // ---------------------------------------------------------------------------
+// Realized statistics from the TWR series (Phase 4). Never computed from
+// assumptions: input is the cumulative TWR series pulled from Addepar.
+// ---------------------------------------------------------------------------
+
+export type TwrPoint = {
+  /** ISO date (yyyy-mm-dd). */
+  asOf: string;
+  /** Cumulative TWR since the series start, as a FRACTION (0.052 = +5.2%). */
+  cumulative: number;
+};
+
+export type RealizedStats = {
+  /** Annualized stdev of period returns, as a fraction. */
+  annualizedVol: number;
+  /** Annualized return over the span, as a fraction. */
+  annualizedReturn: number;
+  /** (annualizedReturn - riskFree) / annualizedVol; null when vol is ~0. */
+  sharpe: number | null;
+  observations: number;
+};
+
+/**
+ * Realized vol + Sharpe from a cumulative TWR series. Period returns are
+ * chained out of consecutive cumulative points; annualization uses the
+ * observed average spacing. Returns null with fewer than minPoints
+ * observations (default 20) or a non-positive time span.
+ */
+export function computeRealizedStats(
+  series: TwrPoint[],
+  opts: { riskFreeRate?: number; minPoints?: number } = {},
+): RealizedStats | null {
+  const minPoints = opts.minPoints ?? 20;
+  const riskFree = opts.riskFreeRate ?? 0;
+  const sorted = [...series].sort((a, b) => a.asOf.localeCompare(b.asOf));
+  if (sorted.length < minPoints) return null;
+
+  const first = new Date(sorted[0]!.asOf).getTime();
+  const last = new Date(sorted[sorted.length - 1]!.asOf).getTime();
+  const spanDays = (last - first) / 86_400_000;
+  if (spanDays <= 0) return null;
+
+  const periodReturns: number[] = [];
+  for (let i = 1; i < sorted.length; i++) {
+    const prev = 1 + sorted[i - 1]!.cumulative;
+    const curr = 1 + sorted[i]!.cumulative;
+    if (prev <= 0) return null;
+    periodReturns.push(curr / prev - 1);
+  }
+
+  const mean = periodReturns.reduce((s, r) => s + r, 0) / periodReturns.length;
+  const variance =
+    periodReturns.reduce((s, r) => s + (r - mean) ** 2, 0) / (periodReturns.length - 1);
+  const periodsPerYear = 365.25 / (spanDays / periodReturns.length);
+  const annualizedVol = Math.sqrt(variance) * Math.sqrt(periodsPerYear);
+
+  const totalGrowth = (1 + sorted[sorted.length - 1]!.cumulative) / (1 + sorted[0]!.cumulative);
+  const annualizedReturn = totalGrowth ** (365.25 / spanDays) - 1;
+
+  const sharpe = annualizedVol > 1e-9 ? (annualizedReturn - riskFree) / annualizedVol : null;
+  return { annualizedVol, annualizedReturn, sharpe, observations: sorted.length };
+}
+
+// ---------------------------------------------------------------------------
 // Business-day helpers (Mon-Fri; holidays not modeled in v1)
 // ---------------------------------------------------------------------------
 
