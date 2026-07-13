@@ -1,0 +1,51 @@
+{
+  "meta": {
+    "columns": ["trade_date", "settle_date", "type", "description", "security", "units", "amount", "currency"]
+  },
+  "data": [
+    {
+      "id": "500001",
+      "type": "transactions",
+      "attributes": {
+        "trade_date": "2026-07-01",
+        "settle_date": "2026-07-03",
+        "type": "contribution",
+        "description": "Wire deposit",
+        "security": null,
+        "units": null,
+        "amount": 50000.0,
+        "currency": "USD"
+      }
+    },
+    {
+      "id": "500002",
+      "type": "transactions",
+      "attributes": {
+        "trade_date": "2026-07-02",
+        "settle_date": "2026-07-04",
+        "type": "buy",
+        "description": "Buy 100 VOO",
+        "security": "VOO",
+        "units": 100.0,
+        "amount": -56250.0,
+        "currency": "USD"
+      }
+    },
+    {
+      "id": "500003",
+      "type": "transactions",
+      "attributes": {
+        "trade_date": "2026-07-05",
+        "settle_date": null,
+        "type": "dividend_income",
+        "description": "VOO dividend",
+        "security": "VOO",
+        "units": null,
+        "amount": 812.5,
+        "currency": "USD"
+      }
+    }
+  ],
+  "included": [],
+  "links": { "next": null }
+}

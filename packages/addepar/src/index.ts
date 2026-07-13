@@ -1,8 +1,15 @@
 /**
- * Addepar client package. Built in Phase 1.
- *
- * Contract will be verified against developers.addepar.com before any code is
- * written here (Portfolio Query, Entities, Jobs, Transactions APIs; Basic auth
- * with Addepar-Firm header; JSON:API content type; 403 licensing degradation).
+ * Addepar API client. Contract verified against developers.addepar.com
+ * (2026-07-13): basic-authentication, portfolio-query, transactions-query,
+ * jobs, entities. All raw payloads are stored verbatim by callers before
+ * normalization; 403s on licensed attributes surface as AddeparLicenseError
+ * for graceful degradation.
  */
-export const ADDEPAR_PACKAGE_PHASE = 1;
+export * from "./config";
+export * from "./errors";
+export * from "./http";
+export * from "./schemas";
+export * from "./portfolio";
+export * from "./entities";
+export * from "./transactions";
+export * from "./jobs";
