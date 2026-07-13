@@ -1,10 +1,12 @@
+import { INTAKE_STAGES, INTAKE_STATUS_LABEL } from "@ls/domain";
 import { ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { refreshAddeparData, reviewPortfolio } from "@/lib/actions/portfolio";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { intakeStageCounts, ticketRailCounts } from "@/lib/data";
 
-export function ActionRail({
+export async function ActionRail({
   scope,
   scopeId,
   addeparConfigured,
@@ -17,6 +19,17 @@ export function ActionRail({
   intakeCounts?: { stage: string; count: number }[];
   ticketCounts?: { label: string; count: number; urgent?: boolean }[];
 }) {
+  if (!intakeCounts || !ticketCounts) {
+    const [stageCounts, railCounts] = await Promise.all([
+      intakeStageCounts(),
+      ticketRailCounts(),
+    ]);
+    intakeCounts ??= INTAKE_STAGES.map((stage) => ({
+      stage: INTAKE_STATUS_LABEL[stage],
+      count: stageCounts[stage] ?? 0,
+    }));
+    ticketCounts ??= railCounts;
+  }
   return (
     <div className="flex flex-col gap-4">
       <Card>
@@ -33,7 +46,10 @@ export function ActionRail({
               Review Portfolio
             </Button>
           </form>
-          <Link href="/tickets" className={buttonVariants({ variant: "outline" }) + " justify-between"}>
+          <Link
+            href="/tickets/new"
+            className={buttonVariants({ variant: "outline" }) + " justify-between"}
+          >
             Open Ticket <ChevronRight className="h-4 w-4" />
           </Link>
           <Link href="/proposals" className={buttonVariants({ variant: "outline" }) + " justify-between"}>

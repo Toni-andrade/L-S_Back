@@ -201,6 +201,80 @@ export async function lastSyncJob(kinds: string[] = ["addepar_nightly", "addepar
   return data;
 }
 
+// ---------------------------------------------------------------------------
+// Intake + tickets (Phase 2)
+// ---------------------------------------------------------------------------
+
+export async function intakeStageCounts(): Promise<Record<string, number>> {
+  const supabase = await createClient();
+  const { data } = await supabase.from("intake_submissions").select("status");
+  const counts: Record<string, number> = {};
+  for (const row of data ?? []) counts[row.status] = (counts[row.status] ?? 0) + 1;
+  return counts;
+}
+
+export async function lastIntakeReceivedAt(): Promise<string | null> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("intake_submissions")
+    .select("received_at")
+    .order("received_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return data?.received_at ?? null;
+}
+
+export type TicketListRow = {
+  id: string;
+  number: string;
+  title: string;
+  category: string;
+  priority: "low" | "medium" | "high" | "urgent";
+  status: "new" | "in_progress" | "waiting_client" | "waiting_custodian" | "resolved" | "closed";
+  assignee_id: string | null;
+  created_by: string;
+  client_id: string | null;
+  due_at: string | null;
+  created_at: string;
+};
+
+export async function ticketsList(): Promise<TicketListRow[]> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("tickets")
+    .select(
+      "id, number, title, category, priority, status, assignee_id, created_by, client_id, due_at, created_at",
+    )
+    .order("created_at", { ascending: false });
+  return (data ?? []) as TicketListRow[];
+}
+
+/** Right-rail / dashboard counts: Open, Urgent, Pending Reply, Due Today. */
+export async function ticketRailCounts(): Promise<
+  { label: string; count: number; urgent?: boolean }[]
+> {
+  const tickets = await ticketsList();
+  const open = tickets.filter(
+    (t) => t.status !== "resolved" && t.status !== "closed",
+  );
+  const now = new Date();
+  const dueToday = open.filter((t) => {
+    if (!t.due_at) return false;
+    const due = new Date(t.due_at);
+    return (
+      due.getFullYear() === now.getFullYear() &&
+      due.getMonth() === now.getMonth() &&
+      due.getDate() === now.getDate()
+    );
+  });
+  return [
+    { label: "Open", count: open.length },
+    { label: "Urgent", count: open.filter((t) => t.priority === "urgent").length, urgent: true },
+    { label: "Pending Reply", count: open.filter((t) => t.status === "waiting_client").length },
+    { label: "Due Today", count: dueToday.length },
+  ];
+}
+
 export function addeparConfigured(): boolean {
   return Boolean(
     process.env.ADDEPAR_SUBDOMAIN &&

@@ -59,7 +59,7 @@ Placeholders; filled in as the features ship (Phase 4 hardening):
 ## Phase status
 
 - [x] Phase 0: scaffold, auth + allowlist, roles, brand tokens, app shell, audit log
-- [ ] Phase 1: Addepar + portfolio review
-- [ ] Phase 2: intake + tickets
+- [x] Phase 1: Addepar + portfolio review
+- [x] Phase 2: intake + tickets
 - [ ] Phase 3: models + proposals
 - [ ] Phase 4: hardening
