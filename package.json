@@ -1,0 +1,16 @@
+{
+  "name": "ls-backoffice",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@10.12.0",
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "typecheck": "turbo typecheck",
+    "test": "turbo test"
+  },
+  "devDependencies": {
+    "turbo": "^2.5.0",
+    "typescript": "^5.8.0"
+  }
+}

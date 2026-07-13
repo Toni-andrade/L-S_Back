@@ -1,0 +1,21 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* L&S brand tokens (canonical source: packages/domain/src/brand.ts).
+   No gold or yellow anywhere, under any circumstances. */
+:root {
+  --ls-oxford: #13213c;
+  --ls-royal: #0c3a8f;
+  --ls-celeste: #4685e4;
+  --ls-marrom: #5d4038;
+  --ls-verde: #2d6a4f;
+  --ls-red: #a4262c;
+  --ls-red-alt: #cc3333;
+  --ls-app-bg: #f5f7fa;
+  --ls-border: #e6eaf0;
+}
+
+body {
+  @apply bg-app-bg text-oxford antialiased;
+}
