@@ -32,6 +32,19 @@ export const proposalBriefSchema = z.object({
 export type ProposalBrief = z.infer<typeof proposalBriefSchema>;
 export type BriefStrategy = z.infer<typeof briefStrategySchema>;
 
+/** The client's current portfolio, for the optional positions appendix. */
+export type CurrentPortfolioPosition = {
+  symbol: string | null;
+  description: string | null;
+  assetClass: string | null;
+  marketValue: number;
+};
+export type CurrentPortfolio = {
+  asOf: string;
+  totalMv: number;
+  positions: CurrentPortfolioPosition[];
+};
+
 /** A strategy row as loaded from the `strategies` table. */
 export type StrategyInfo = {
   key: string;

@@ -170,6 +170,29 @@ describe("golden-file PPTX render", () => {
     expect(neutralSlide).toContain("6,95%");
   });
 
+  it("adds a Carteira Atual appendix with individual positions when provided", async () => {
+    const result = await renderProposalPptx(brief, LIBRARY, {
+      currentPortfolio: {
+        asOf: "2026-07-14",
+        totalMv: 200000,
+        positions: [
+          { symbol: "VOO", description: "Vanguard S&P 500", assetClass: "Equity", marketValue: 120000 },
+          { symbol: "AGG", description: "iShares Agg Bond", assetClass: "Fixed Income", marketValue: 80000 },
+        ],
+      },
+    });
+    expect(result.slideCount).toBe(10); // one more than the base 9
+    const zip = await JSZip.loadAsync(result.buffer);
+    const names = Object.keys(zip.files)
+      .filter((n) => /^ppt\/slides\/slide\d+\.xml$/.test(n))
+      .sort((a, b) => Number(a.match(/\d+/)![0]) - Number(b.match(/\d+/)![0]));
+    const all = (await Promise.all(names.map((n) => zip.files[n]!.async("string")))).join("\n");
+    expect(all).toContain("Carteira Atual");
+    expect(all).toContain("VOO");
+    // Still no forbidden strings or em/en dashes in the appendix
+    expect(all).not.toMatch(/[–—]/);
+  });
+
   it("OURO under 15% appears in the summary table but has no dedicated slide", () => {
     const resumo = slideXmls[3]!;
     expect(resumo).toContain("Gold");

@@ -18,20 +18,28 @@ type RowDefault = {
 export default async function NewProposalPage({
   searchParams,
 }: {
-  searchParams: Promise<{ model?: string; draft?: string; from?: string; clientId?: string }>;
+  searchParams: Promise<{
+    model?: string;
+    draft?: string;
+    from?: string;
+    clientId?: string;
+    template?: string;
+  }>;
 }) {
   await requireRole("advisor", "admin");
   const params = await searchParams;
 
   const supabase = await createClient();
-  const [{ data: strategies }, { data: clients }, { data: models }] = await Promise.all([
-    supabase.from("strategies").select("id, key, name, active").order("key"),
-    supabase.from("clients").select("id, name").order("name"),
-    supabase
-      .from("models")
-      .select("id, name, risk_profile, status, model_sleeves(strategy_id, target_weight)")
-      .order("name"),
-  ]);
+  const [{ data: strategies }, { data: clients }, { data: models }, { data: templates }] =
+    await Promise.all([
+      supabase.from("strategies").select("id, key, name, active").order("key"),
+      supabase.from("clients").select("id, name, risk_profile").order("name"),
+      supabase
+        .from("models")
+        .select("id, name, risk_profile, status, model_sleeves(strategy_id, target_weight)")
+        .order("name"),
+      supabase.from("proposal_templates").select("id, name, risk_profile, brief").eq("active", true).order("name"),
+    ]);
   const strategyById = new Map((strategies ?? []).map((s) => [s.id, s]));
 
   // Prefill: existing draft (edit), locked proposal (revise -> v2), or a model.
@@ -65,6 +73,19 @@ export default async function NewProposalPage({
         heading = `Revise: new version v${p.version + 1}`;
       }
     }
+  } else if (params.template) {
+    const t = (templates ?? []).find((x) => x.id === params.template);
+    if (t) {
+      const tBrief = t.brief as { strategies?: RowDefault[]; notes?: string | null };
+      defaults = { riskProfile: t.risk_profile ?? undefined, notes: tBrief.notes ?? null };
+      rows = (tBrief.strategies ?? []).map((s) => ({
+        key: s.key,
+        weight: String(s.weight),
+        returnSource: s.returnSource ?? "library",
+        asOfDate: s.asOfDate ?? "",
+      }));
+      heading = `New Proposal from "${t.name}"`;
+    }
   } else if (params.model) {
     const model = (models ?? []).find((m) => m.id === params.model);
     if (model) {
@@ -79,6 +100,35 @@ export default async function NewProposalPage({
       );
     }
   }
+
+  // Prefill AUM + risk profile + printed name from the linked client.
+  if (clientId && !defaults.totalAum) {
+    const client = (clients ?? []).find((c) => c.id === clientId);
+    if (client) {
+      if (!defaults.clientName) defaults.clientName = client.name;
+      if (!defaults.riskProfile && client.risk_profile) defaults.riskProfile = client.risk_profile;
+      const { data: snap } = await supabase
+        .from("snapshots")
+        .select("id")
+        .order("as_of", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (snap) {
+        const { data: accts } = await supabase.from("accounts").select("id").eq("client_id", clientId);
+        const accountIds = (accts ?? []).map((a) => a.id);
+        if (accountIds.length > 0) {
+          const { data: hold } = await supabase
+            .from("holdings")
+            .select("market_value")
+            .eq("snapshot_id", snap.id)
+            .in("account_id", accountIds);
+          const mv = (hold ?? []).reduce((s, h) => s + Number(h.market_value), 0);
+          if (mv > 0) defaults.totalAum = Math.round(mv);
+        }
+      }
+    }
+  }
+
   while (rows.length < MAX_ROWS) {
     rows.push({ key: "", weight: "", returnSource: "library", asOfDate: "" });
   }
@@ -240,6 +290,12 @@ export default async function NewProposalPage({
                 className={inputClass}
               />
             </div>
+
+            <label className="flex items-center gap-2 text-sm text-slate-600">
+              <input type="checkbox" name="includeCurrentPortfolio" />
+              Include the client&apos;s current portfolio (individual positions) as an appendix in
+              the generated deck
+            </label>
 
             <div className="flex justify-end">
               <Button type="submit">Save Draft</Button>

@@ -18,6 +18,7 @@ import PptxGenJS from "pptxgenjs";
 import {
   OURO_SLIDE_MIN_WEIGHT,
   validateBrief,
+  type CurrentPortfolio,
   type ProposalBrief,
   type StrategyInfo,
 } from "./brief";
@@ -124,6 +125,7 @@ export type RenderResult = {
 export async function renderProposalPptx(
   brief: ProposalBrief,
   library: StrategyInfo[],
+  opts: { currentPortfolio?: CurrentPortfolio } = {},
 ): Promise<RenderResult> {
   const errors = validateBrief(brief, library);
   if (errors.length > 0) {
@@ -433,6 +435,79 @@ export async function renderProposalPptx(
         fontSize: 11,
         color: c(BRAND.oxford),
       });
+    });
+    page += 1;
+    addFooter(slide, page);
+  }
+
+  // 6b. Carteira Atual (current portfolio appendix, optional) - a TABLE of the
+  // client's actual positions grouped by asset class. Tables over charts.
+  if (opts.currentPortfolio && opts.currentPortfolio.positions.length > 0) {
+    const cp = opts.currentPortfolio;
+    const slide = pptx.addSlide();
+    addTitle(slide, "Carteira Atual");
+    slide.addText(`Posições em ${cp.asOf} · total ${formatCurrencyBR(cp.totalMv)}`, {
+      x: 0.6,
+      y: 0.95,
+      w: 8.8,
+      h: 0.3,
+      fontFace: FONT,
+      fontSize: 11,
+      color: c(BRAND.royal),
+    });
+    const byClass = new Map<string, number>();
+    for (const p of cp.positions) {
+      const k = p.assetClass ?? "Nao classificado";
+      byClass.set(k, (byClass.get(k) ?? 0) + p.marketValue);
+    }
+    const classRows = [...byClass.entries()].sort((a, b) => b[1] - a[1]);
+    const header = ["Classe de ativo", "Valor", "Peso"].map((t) => ({
+      text: t,
+      options: {
+        bold: true,
+        color: "FFFFFF",
+        fill: { color: c(BRAND.oxford) },
+        fontFace: FONT,
+        fontSize: 11,
+      },
+    }));
+    const body = classRows.map(([cls, mv]) => [
+      { text: cls, options: { fontFace: FONT, fontSize: 11, color: c(BRAND.oxford) } },
+      {
+        text: formatCurrencyBR(mv),
+        options: { fontFace: FONT, fontSize: 11, color: c(BRAND.oxford), align: "right" as const },
+      },
+      {
+        text: formatPercentBR(cp.totalMv > 0 ? (mv / cp.totalMv) * 100 : 0, 1),
+        options: { fontFace: FONT, fontSize: 11, color: "5A6478", align: "right" as const },
+      },
+    ]);
+    slide.addTable([header, ...body], {
+      x: 0.6,
+      y: 1.4,
+      w: 5.6,
+      colW: [3.0, 1.4, 1.2],
+      border: { type: "solid", color: c(BRAND.border), pt: 0.5 },
+      rowH: 0.3,
+    });
+    // Top positions on the right
+    const top = [...cp.positions].sort((a, b) => b.marketValue - a.marketValue).slice(0, 12);
+    slide.addText(
+      top.map((p, i) => ({
+        text: `${p.symbol ? p.symbol + "  " : ""}${p.description ?? ""}  ${formatCurrencyBR(p.marketValue)}`,
+        options: { breakLine: true, fontSize: 9, color: c(BRAND.oxford), bullet: i >= 0 },
+      })),
+      { x: 6.4, y: 1.4, w: 3.2, h: 3.4, fontFace: FONT, valign: "top" },
+    );
+    slide.addText("Principais posições", {
+      x: 6.4,
+      y: 1.05,
+      w: 3.2,
+      h: 0.3,
+      fontFace: FONT,
+      fontSize: 11,
+      bold: true,
+      color: c(BRAND.royal),
     });
     page += 1;
     addFooter(slide, page);

@@ -12,6 +12,8 @@ export {
   proposalBriefSchema,
   validateBrief,
   type BriefStrategy,
+  type CurrentPortfolio,
+  type CurrentPortfolioPosition,
   type ProposalBrief,
   type StrategyInfo,
 } from "./brief";

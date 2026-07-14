@@ -11,6 +11,7 @@ import {
   approveProposal,
   generateProposalArtifacts,
   markProposalSent,
+  saveProposalTemplate,
   submitProposalForReview,
 } from "@/lib/actions/proposals";
 import { requireUser } from "@/lib/auth";
@@ -232,6 +233,32 @@ export default async function ProposalDetailPage({
                   Superseded by a newer version; read-only.
                 </p>
               )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Save as template
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <form action={saveProposalTemplate} className="flex gap-2">
+                <input type="hidden" name="proposalId" value={p.id} />
+                <input
+                  name="name"
+                  required
+                  minLength={2}
+                  placeholder="Template name"
+                  className="flex-1 rounded-lg border border-hairline px-3 py-1.5 text-sm focus:border-royal focus:outline-none"
+                />
+                <Button type="submit" variant="outline" size="sm">
+                  Save
+                </Button>
+              </form>
+              <p className="mt-1.5 text-xs text-slate-400">
+                Reuse this strategy mix and notes for future proposals.
+              </p>
             </CardContent>
           </Card>
 

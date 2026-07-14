@@ -6,6 +6,7 @@ import {
   proposalBriefSchema,
   renderProposalPptx,
   validateBrief,
+  type CurrentPortfolio,
   type ProposalBrief,
   type StrategyInfo,
 } from "@ls/docgen";
@@ -176,6 +177,7 @@ export async function saveProposal(formData: FormData): Promise<void> {
     currency: brief.currency,
     risk_profile: brief.riskProfile,
     month_year: brief.monthYear,
+    include_current_portfolio: formData.get("includeCurrentPortfolio") === "on",
   };
 
   const supabase = await createClient();
@@ -251,7 +253,45 @@ export async function generateProposalArtifacts(formData: FormData): Promise<voi
 
   const library = await loadLibrary();
   const brief = proposalBriefSchema.parse(p.brief);
-  const { buffer } = await renderProposalPptx(brief, library);
+
+  // Optional current-portfolio appendix from the client's latest x-ray.
+  let currentPortfolio: CurrentPortfolio | undefined = undefined;
+  if (p.include_current_portfolio && p.client_id) {
+    const { data: snap } = await supabase
+      .from("snapshots")
+      .select("id, as_of")
+      .order("as_of", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (snap) {
+      const { data: accts } = await supabase.from("accounts").select("id").eq("client_id", p.client_id);
+      const accountIds = (accts ?? []).map((a) => a.id);
+      if (accountIds.length > 0) {
+        const { data: hold } = await supabase
+          .from("holdings")
+          .select("symbol, description, asset_class, market_value")
+          .eq("snapshot_id", snap.id)
+          .in("account_id", accountIds);
+        const positions = (hold ?? [])
+          .map((h) => ({
+            symbol: h.symbol,
+            description: h.description,
+            assetClass: h.asset_class,
+            marketValue: Number(h.market_value),
+          }))
+          .filter((x) => x.marketValue !== 0);
+        if (positions.length > 0) {
+          currentPortfolio = {
+            asOf: snap.as_of,
+            totalMv: positions.reduce((s, x) => s + x.marketValue, 0),
+            positions,
+          };
+        }
+      }
+    }
+  }
+
+  const { buffer } = await renderProposalPptx(brief, library, { currentPortfolio });
   const emailDraft = generateEmailDraft(brief, library);
 
   const path = `${id}/proposta-v${p.version}.pptx`;
@@ -394,4 +434,44 @@ export async function acknowledgeProposalFlag(formData: FormData): Promise<void>
     after: { ack_reason: reason },
   });
   revalidatePath(`/proposals/${before.proposal_id}`);
+}
+
+/** Save a proposal's brief as a reusable template. */
+export async function saveProposalTemplate(formData: FormData): Promise<void> {
+  const user = await requireRole("advisor", "admin");
+  const proposalId = uuid.parse(formData.get("proposalId"));
+  const name = z.string().trim().min(2).parse(formData.get("name"));
+
+  const supabase = await createClient();
+  const { data: p } = await supabase
+    .from("proposals")
+    .select("brief, risk_profile")
+    .eq("id", proposalId)
+    .single();
+  if (!p) throw new Error("proposal not found");
+
+  const brief = p.brief as ProposalBrief;
+  const templateBrief = {
+    strategies: brief.strategies,
+    notes: brief.notes ?? null,
+  };
+  const { data, error } = await supabase
+    .from("proposal_templates")
+    .insert({
+      name,
+      risk_profile: p.risk_profile,
+      brief: templateBrief,
+      created_by: user.id,
+    })
+    .select("id")
+    .single();
+  if (error) throw new Error(error.message);
+
+  await writeAudit({
+    action: "proposal_template.create",
+    entityType: "proposal_templates",
+    entityId: data.id,
+    after: { name, from_proposal: proposalId },
+  });
+  revalidatePath("/proposals");
 }

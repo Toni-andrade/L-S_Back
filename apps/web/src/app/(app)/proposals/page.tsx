@@ -20,10 +20,13 @@ const STATUS_VARIANT = {
 export default async function ProposalsPage() {
   await requireUser();
   const supabase = await createClient();
-  const { data: proposals } = await supabase
-    .from("proposals")
-    .select("id, client_name, status, version, total_aum, risk_profile, month_year, created_at")
-    .order("created_at", { ascending: false });
+  const [{ data: proposals }, { data: templates }] = await Promise.all([
+    supabase
+      .from("proposals")
+      .select("id, client_name, status, version, total_aum, risk_profile, month_year, created_at")
+      .order("created_at", { ascending: false }),
+    supabase.from("proposal_templates").select("id, name, risk_profile").eq("active", true).order("name"),
+  ]);
 
   return (
     <div>
@@ -36,6 +39,22 @@ export default async function ProposalsPage() {
           </Link>
         }
       />
+
+      {(templates ?? []).length > 0 ? (
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <span className="text-xs uppercase tracking-wide text-slate-400">Start from template:</span>
+          {(templates ?? []).map((t) => (
+            <Link
+              key={t.id}
+              href={`/proposals/new?template=${t.id}`}
+              className="rounded-full bg-white px-3 py-1 text-sm text-royal ring-1 ring-hairline hover:bg-app-bg"
+            >
+              {t.name}
+              {t.risk_profile ? <span className="ml-1 text-xs text-slate-400">({t.risk_profile})</span> : null}
+            </Link>
+          ))}
+        </div>
+      ) : null}
 
       {(proposals ?? []).length === 0 ? (
         <EmptyState
