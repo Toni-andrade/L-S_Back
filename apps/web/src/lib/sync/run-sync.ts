@@ -16,6 +16,28 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createServiceClient } from "@/lib/supabase/server";
 import { recomputeAllFlags } from "./flags";
 
+/**
+ * Firm-specific portfolio-query column keys (discovered from /v1/attributes for
+ * firm 1244, 2026-07-14). Overridable via ADDEPAR_COL_* env. The generic keys
+ * "units"/"currency"/"asset_class" are NOT valid for this firm.
+ */
+const COL = {
+  value: process.env.ADDEPAR_COL_VALUE ?? "value",
+  units: process.env.ADDEPAR_COL_UNITS ?? "shares",
+  price: process.env.ADDEPAR_COL_PRICE ?? "price_per_share",
+  currency: process.env.ADDEPAR_COL_CURRENCY ?? "currency_factor",
+  assetClass: process.env.ADDEPAR_COL_ASSET_CLASS ?? "_custom_ls_asset_class_1285149",
+  symbol: process.env.ADDEPAR_COL_SYMBOL ?? "_md_ticker",
+};
+const HOLDING_COLUMNS = [
+  COL.value,
+  COL.units,
+  COL.price,
+  COL.assetClass,
+  COL.currency,
+  COL.symbol,
+].map((key) => ({ key }));
+
 export type SyncResult = {
   jobId: string;
   status: "done" | "error" | "skipped";
@@ -95,6 +117,7 @@ export async function runAddeparSync(options: {
             portfolioId: 1,
             startDate: asOf,
             endDate: asOf,
+            columns: HOLDING_COLUMNS,
           })
         : await runScopedQuery(config, service, options.target!, asOf);
 
@@ -108,7 +131,7 @@ export async function runAddeparSync(options: {
     for (const pos of positions) {
       const accountEntity = pos.path[0]?.entityId != null ? String(pos.path[0].entityId) : null;
       const accountId = accountEntity ? accountByEntity.get(accountEntity) : undefined;
-      const value = Number(pos.columns.value ?? 0);
+      const value = Number(pos.columns[COL.value] ?? 0);
       if (!accountId) {
         unmappedPositionMv += value;
         continue;
@@ -117,13 +140,13 @@ export async function runAddeparSync(options: {
         account_id: accountId,
         as_of: asOf,
         security_id: pos.path[1]?.entityId != null ? String(pos.path[1].entityId) : null,
-        symbol: (pos.columns.symbol as string | undefined) ?? null,
+        symbol: (pos.columns[COL.symbol] as string | undefined) ?? null,
         description: pos.path[1]?.name ?? null,
-        asset_class: (pos.columns.asset_class as string | undefined) ?? null,
-        quantity: pos.columns.units == null ? null : Number(pos.columns.units),
-        price: pos.columns.price == null ? null : Number(pos.columns.price),
+        asset_class: (pos.columns[COL.assetClass] as string | undefined) ?? null,
+        quantity: pos.columns[COL.units] == null ? null : Number(pos.columns[COL.units]),
+        price: pos.columns[COL.price] == null ? null : Number(pos.columns[COL.price]),
         market_value: value,
-        currency: (pos.columns.currency as string | undefined) ?? "USD",
+        currency: (pos.columns[COL.currency] as string | undefined) ?? "USD",
         raw: pos.raw,
       });
     }
@@ -260,6 +283,7 @@ async function runScopedQuery(
     portfolioId,
     startDate: asOf,
     endDate: asOf,
+    columns: HOLDING_COLUMNS,
   });
 }
 
