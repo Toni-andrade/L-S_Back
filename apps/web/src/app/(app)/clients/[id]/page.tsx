@@ -13,11 +13,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { updateClientProfile } from "@/lib/actions/clients";
+import { deleteDocument, uploadDocument } from "@/lib/actions/documents";
 import { startWorkflow } from "@/lib/actions/workflows";
 import { requireUser } from "@/lib/auth";
 import {
   activityForScope,
   contactsForClient,
+  documentsForClient,
   flagsForScope,
   holdingsForScope,
   latestSnapshot,
@@ -66,6 +68,7 @@ export default async function ClientProfilePage({
       workflowRuns({ clientId: id }),
       workflowTemplates(),
     ]);
+  const documents = await documentsForClient(id);
 
   const aum = holdings.reduce((s, h) => s + h.market_value, 0);
   const openFlags = flags.filter((f) => !f.acknowledged_at).length;
@@ -186,6 +189,57 @@ export default async function ClientProfilePage({
                     ))}
                   </tbody>
                 </table>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Documents */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Documents ({documents.length})</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-3">
+              <form action={uploadDocument} className="flex flex-wrap items-end gap-2">
+                <input type="hidden" name="clientId" value={id} />
+                <select name="category" defaultValue="kyc" className={`${inputClass} w-36`}>
+                  {["kyc", "agreement", "statement", "tax", "correspondence", "other"].map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+                <input
+                  type="file"
+                  name="file"
+                  required
+                  className="flex-1 text-sm text-slate-600 file:mr-2 file:rounded-lg file:border file:border-hairline file:bg-white file:px-3 file:py-1.5 file:text-sm"
+                />
+                <Button type="submit" size="sm">Upload</Button>
+              </form>
+              {documents.length === 0 ? (
+                <p className="text-sm text-slate-400">No documents yet.</p>
+              ) : (
+                <ul className="flex flex-col divide-y divide-hairline text-sm">
+                  {documents.map((d) => (
+                    <li key={d.id} className="flex items-center justify-between gap-2 py-2">
+                      <div className="min-w-0">
+                        <a href={`/api/documents/${d.id}`} className="truncate font-medium text-royal hover:underline">
+                          {d.name}
+                        </a>
+                        <div className="text-xs text-slate-400">
+                          <Badge variant="default">{d.category}</Badge>{" "}
+                          {new Date(d.created_at).toLocaleDateString("en-US")}
+                          {d.size_bytes ? ` · ${Math.round(Number(d.size_bytes) / 1024)} KB` : ""}
+                        </div>
+                      </div>
+                      <form action={deleteDocument}>
+                        <input type="hidden" name="id" value={d.id} />
+                        <input type="hidden" name="clientId" value={id} />
+                        <Button type="submit" variant="ghost" size="sm" className="text-alert">
+                          Delete
+                        </Button>
+                      </form>
+                    </li>
+                  ))}
+                </ul>
               )}
             </CardContent>
           </Card>

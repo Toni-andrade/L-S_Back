@@ -456,6 +456,16 @@ export async function slaBoard() {
   return { rows, policies };
 }
 
+export async function documentsForClient(clientId: string) {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("documents")
+    .select("id, category, name, mime_type, size_bytes, uploaded_by, created_at")
+    .eq("client_id", clientId)
+    .order("created_at", { ascending: false });
+  return data ?? [];
+}
+
 // ---------------------------------------------------------------------------
 // Workflow playbooks
 // ---------------------------------------------------------------------------
