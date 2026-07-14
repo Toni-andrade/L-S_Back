@@ -1,4 +1,5 @@
 import {
+  BarChart3,
   CalendarClock,
   Inbox,
   Landmark,
@@ -27,6 +28,7 @@ export type NavItem = {
  */
 export const NAV_ITEMS: NavItem[] = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/analytics", label: "Analytics", icon: BarChart3 },
   { href: "/portfolio-review", label: "Portfolio Review", icon: PieChart },
   { href: "/clients", label: "Clients", icon: Users },
   { href: "/accounts", label: "Accounts", icon: Landmark },
