@@ -456,6 +456,15 @@ export async function slaBoard() {
   return { rows, policies };
 }
 
+export async function complianceItems() {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("compliance_items")
+    .select("id, kind, title, description, due_date, status, recurring, resolved_at")
+    .order("due_date", { ascending: true, nullsFirst: false });
+  return data ?? [];
+}
+
 export async function documentsForClient(clientId: string) {
   const supabase = await createClient();
   const { data } = await supabase
@@ -695,6 +704,24 @@ export async function workQueue(user: {
         title: r.title,
         subtitle: `Playbook · ${r.status.replace("_", " ")}`,
         href: `/workflows/${r.id}`,
+      });
+    }
+
+    // Compliance items due / overdue
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const { data: compliance } = await supabase
+      .from("compliance_items")
+      .select("id, title, due_date, status")
+      .in("status", ["open", "in_progress"])
+      .not("due_date", "is", null)
+      .lte("due_date", todayStr);
+    for (const c of compliance ?? []) {
+      opsQueue.push({
+        kind: "compliance",
+        severity: "high",
+        title: `Compliance due: ${c.title}`,
+        subtitle: `Due ${c.due_date}`,
+        href: "/compliance",
       });
     }
 

@@ -9,6 +9,7 @@ import {
   PieChart,
   Plug,
   Settings,
+  ShieldCheck,
   Ticket,
   Users,
   type LucideIcon,
@@ -35,6 +36,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/models", label: "Models", icon: Layers },
   { href: "/tickets", label: "Tickets", icon: Ticket },
   { href: "/workflows", label: "Workflows", icon: ListChecks },
+  { href: "/compliance", label: "Compliance", icon: ShieldCheck },
   { href: "/integrations", label: "Integrations", icon: Plug },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
