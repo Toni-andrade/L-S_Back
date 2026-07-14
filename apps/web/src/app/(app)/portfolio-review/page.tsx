@@ -2,14 +2,15 @@ import { formatCurrencyUS } from "@ls/domain";
 import { PieChart } from "lucide-react";
 import Link from "next/link";
 import { EmptyState } from "@/components/empty-state";
+import { GroupSelector } from "@/components/review/group-selector";
 import { PageHeader } from "@/components/shell/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { requireUser } from "@/lib/auth";
+import { requireUser, userSeesAll } from "@/lib/auth";
 import { holdingsForScope, latestSnapshot } from "@/lib/data";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function PortfolioReviewIndex() {
-  await requireUser();
+  const me = await requireUser();
   const supabase = await createClient();
   const [{ data: households }, { data: soloClients }, snapshot] = await Promise.all([
     supabase.from("households").select("id, name").order("name"),
@@ -31,12 +32,21 @@ export default async function PortfolioReviewIndex() {
   );
 
   const empty = householdRows.length === 0 && clientRows.length === 0;
+  const selectorOptions = [
+    ...householdRows.map((h) => ({ scope: "household" as const, id: h.id, name: h.name })),
+    ...clientRows.map((c) => ({ scope: "client" as const, id: c.id, name: c.name })),
+  ];
 
   return (
     <div>
       <PageHeader
         title="Portfolio Review"
-        subtitle={`Households (Addepar GROUPs) and household-less clients${snapshot ? `, values as of ${snapshot.as_of}` : ""}`}
+        subtitle={
+          userSeesAll(me)
+            ? `All households (Addepar GROUPs) and household-less clients${snapshot ? `, values as of ${snapshot.as_of}` : ""}`
+            : `Households and clients you can access${snapshot ? `, values as of ${snapshot.as_of}` : ""}`
+        }
+        action={<GroupSelector options={selectorOptions} />}
       />
       {empty ? (
         <EmptyState

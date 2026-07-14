@@ -1,8 +1,9 @@
+import Link from "next/link";
 import { requireRole } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/shell/page-header";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { addAllowedEmail, removeAllowedEmail, setUserActive, setUserRole } from "./actions";
@@ -73,21 +74,34 @@ export default async function SettingsPage() {
                       )}
                     </td>
                     <td className="py-2.5 text-right">
-                      {u.id !== me.id ? (
-                        <form action={setUserActive}>
-                          <input type="hidden" name="userId" value={u.id} />
-                          <input type="hidden" name="active" value={u.active ? "false" : "true"} />
-                          <Button
-                            type="submit"
-                            variant={u.active ? "outline" : "primary"}
-                            size="sm"
-                          >
-                            {u.active ? "Deactivate" : "Activate"}
-                          </Button>
-                        </form>
-                      ) : (
-                        <span className="text-xs text-slate-400">you</span>
-                      )}
+                      <div className="flex items-center justify-end gap-1">
+                        <Link
+                          href={`/settings/access/${u.id}`}
+                          className={buttonVariants({ variant: "ghost", size: "sm" })}
+                          title="Manage which households and accounts this user can see"
+                        >
+                          Access
+                        </Link>
+                        {u.id !== me.id ? (
+                          <form action={setUserActive}>
+                            <input type="hidden" name="userId" value={u.id} />
+                            <input
+                              type="hidden"
+                              name="active"
+                              value={u.active ? "false" : "true"}
+                            />
+                            <Button
+                              type="submit"
+                              variant={u.active ? "outline" : "primary"}
+                              size="sm"
+                            >
+                              {u.active ? "Deactivate" : "Activate"}
+                            </Button>
+                          </form>
+                        ) : (
+                          <span className="text-xs text-slate-400">you</span>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}

@@ -39,3 +39,12 @@ export async function requireRole(...roles: UserRole[]): Promise<AppUser> {
   if (!roles.includes(user.role)) redirect("/");
   return user;
 }
+
+/**
+ * Firmwide readers: admin and ops see all client/portfolio data (mirrors the
+ * DB predicate public.current_user_sees_all). Advisors are scoped to their
+ * granted households/accounts plus their own advisor book.
+ */
+export function userSeesAll(user: AppUser): boolean {
+  return user.role === "admin" || user.role === "ops";
+}

@@ -1,7 +1,7 @@
 import { INTAKE_STAGES, INTAKE_STATUS_LABEL, formatCurrencyUS } from "@ls/domain";
 import { FileText, Flag, Inbox, Plug, Ticket, Wallet } from "lucide-react";
 import Link from "next/link";
-import { requireUser } from "@/lib/auth";
+import { requireUser, userSeesAll } from "@/lib/auth";
 import {
   addeparConfigured,
   firmAum,
@@ -107,7 +107,7 @@ export default async function DashboardPage() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Wallet className="h-4 w-4 text-royal" /> Firm AUM
+                <Wallet className="h-4 w-4 text-royal" /> {userSeesAll(user) ? "Firm AUM" : "Your AUM"}
               </CardTitle>
             </CardHeader>
             <CardContent>
