@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { updateClientProfile } from "@/lib/actions/clients";
+import { startWorkflow } from "@/lib/actions/workflows";
 import { requireUser } from "@/lib/auth";
 import {
   activityForScope,
@@ -23,6 +24,8 @@ import {
   lastTouchForClient,
   oldestOpenBlockerForClient,
   slaPolicies,
+  workflowRuns,
+  workflowTemplates,
 } from "@/lib/data";
 import { createClient } from "@/lib/supabase/server";
 
@@ -43,7 +46,7 @@ export default async function ClientProfilePage({
   if (!client) notFound();
 
   const snapshot = await latestSnapshot();
-  const [holdings, activity, flags, contacts, policies, lastTouchAt, oldestBlocker, accounts, tickets, proposals, users] =
+  const [holdings, activity, flags, contacts, policies, lastTouchAt, oldestBlocker, accounts, tickets, proposals, users, wfRuns, wfTemplates] =
     await Promise.all([
       snapshot ? holdingsForScope("client", id, snapshot.id) : Promise.resolve([]),
       activityForScope("client", id, "trailing_30d"),
@@ -60,6 +63,8 @@ export default async function ClientProfilePage({
         .not("status", "in", "(resolved,closed)"),
       supabase.from("proposals").select("id, client_name, status, version, month_year").eq("client_id", id),
       supabase.from("users").select("id, name, email"),
+      workflowRuns({ clientId: id }),
+      workflowTemplates(),
     ]);
 
   const aum = holdings.reduce((s, h) => s + h.market_value, 0);
@@ -259,6 +264,44 @@ export default async function ClientProfilePage({
                   <Field label="Tax residency" value={client.tax_residency ?? "—"} />
                 </dl>
               )}
+            </CardContent>
+          </Card>
+
+          {/* Workflows */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Workflows</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-3">
+              {wfRuns.filter((r) => r.status !== "done" && r.status !== "canceled").length === 0 ? (
+                <p className="text-sm text-slate-400">No active workflows.</p>
+              ) : (
+                <ul className="flex flex-col gap-1 text-sm">
+                  {wfRuns
+                    .filter((r) => r.status !== "done" && r.status !== "canceled")
+                    .map((r) => (
+                      <li key={r.id}>
+                        <Link href={`/workflows/${r.id}`} className="flex items-center justify-between hover:underline">
+                          <span className="truncate text-royal">{r.title}</span>
+                          <Badge variant={r.status === "blocked" ? "alert" : "celeste"}>
+                            {r.status.replace("_", " ")}
+                          </Badge>
+                        </Link>
+                      </li>
+                    ))}
+                </ul>
+              )}
+              <form action={startWorkflow} className="flex gap-2">
+                <input type="hidden" name="clientId" value={id} />
+                <select name="templateId" className={inputClass}>
+                  {wfTemplates.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
+                </select>
+                <Button type="submit" size="sm">Start</Button>
+              </form>
             </CardContent>
           </Card>
 

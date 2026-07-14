@@ -5,6 +5,7 @@ import {
   LayoutDashboard,
   Layers,
   FileText,
+  ListChecks,
   PieChart,
   Plug,
   Settings,
@@ -33,6 +34,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/proposals", label: "Proposals", icon: FileText },
   { href: "/models", label: "Models", icon: Layers },
   { href: "/tickets", label: "Tickets", icon: Ticket },
+  { href: "/workflows", label: "Workflows", icon: ListChecks },
   { href: "/integrations", label: "Integrations", icon: Plug },
   { href: "/settings", label: "Settings", icon: Settings },
 ];

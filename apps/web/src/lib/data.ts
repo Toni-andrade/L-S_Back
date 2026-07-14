@@ -457,6 +457,48 @@ export async function slaBoard() {
 }
 
 // ---------------------------------------------------------------------------
+// Workflow playbooks
+// ---------------------------------------------------------------------------
+export async function workflowTemplates() {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("workflow_templates")
+    .select("id, key, name, kind, description")
+    .eq("active", true)
+    .order("name");
+  return data ?? [];
+}
+
+export async function workflowRuns(opts: { clientId?: string; openOnly?: boolean } = {}) {
+  const supabase = await createClient();
+  let q = supabase
+    .from("workflow_runs")
+    .select("id, kind, title, status, client_id, assigned_to, created_at")
+    .order("created_at", { ascending: false });
+  if (opts.clientId) q = q.eq("client_id", opts.clientId);
+  if (opts.openOnly) q = q.not("status", "in", "(done,canceled)");
+  const { data } = await q;
+  return data ?? [];
+}
+
+export async function workflowRunWithSteps(runId: string) {
+  const supabase = await createClient();
+  const [{ data: run }, { data: steps }] = await Promise.all([
+    supabase
+      .from("workflow_runs")
+      .select("id, kind, title, status, client_id, assigned_to, started_by, created_at, completed_at")
+      .eq("id", runId)
+      .maybeSingle(),
+    supabase
+      .from("workflow_run_steps")
+      .select("id, seq, title, role, required, status, completed_by, completed_at")
+      .eq("run_id", runId)
+      .order("seq"),
+  ]);
+  return { run, steps: steps ?? [] };
+}
+
+// ---------------------------------------------------------------------------
 // Work queue: the per-persona action center ("My Day" + Ops queue).
 // Read-only aggregation over flags, SLA, follow-ups, movements, tickets, intake
 // and sync. Client-scoped items respect RLS automatically.
@@ -631,6 +673,18 @@ export async function workQueue(user: {
         title: `${counts.new_lead} new intake lead(s)`,
         subtitle: "Awaiting triage",
         href: "/intake?stage=new_lead",
+      });
+    }
+
+    // Open workflow runs (playbooks in flight)
+    const runs = await workflowRuns({ openOnly: true });
+    for (const r of runs) {
+      opsQueue.push({
+        kind: "workflow",
+        severity: r.status === "blocked" ? "high" : "medium",
+        title: r.title,
+        subtitle: `Playbook · ${r.status.replace("_", " ")}`,
+        href: `/workflows/${r.id}`,
       });
     }
 
