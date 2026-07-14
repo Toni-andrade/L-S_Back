@@ -364,7 +364,7 @@ export async function activityForScope(
 // ---------------------------------------------------------------------------
 // Contacts + SLA (Phase: contact timelines)
 // ---------------------------------------------------------------------------
-import type { SlaPolicy } from "@ls/domain";
+import { assessClientSla, type SlaPolicy } from "@ls/domain";
 
 export async function slaPolicies(): Promise<SlaPolicy[]> {
   const supabase = await createClient();
@@ -454,6 +454,215 @@ export async function slaBoard() {
     })),
   );
   return { rows, policies };
+}
+
+// ---------------------------------------------------------------------------
+// Work queue: the per-persona action center ("My Day" + Ops queue).
+// Read-only aggregation over flags, SLA, follow-ups, movements, tickets, intake
+// and sync. Client-scoped items respect RLS automatically.
+// ---------------------------------------------------------------------------
+export type ActionItem = {
+  kind: string;
+  severity: "high" | "medium" | "low";
+  title: string;
+  subtitle: string;
+  href: string;
+};
+
+const SEV_RANK: Record<ActionItem["severity"], number> = { high: 0, medium: 1, low: 2 };
+const bySeverity = (a: ActionItem, b: ActionItem) => SEV_RANK[a.severity] - SEV_RANK[b.severity];
+
+export async function workQueue(user: {
+  id: string;
+  role: "advisor" | "ops" | "admin";
+}): Promise<{ clientActions: ActionItem[]; opsQueue: ActionItem[] }> {
+  const supabase = await createClient();
+  const seesAll = user.role === "admin" || user.role === "ops";
+
+  const [{ data: clients }, { data: households }] = await Promise.all([
+    supabase.from("clients").select("id, name"),
+    supabase.from("households").select("id, name"),
+  ]);
+  const clientName = new Map((clients ?? []).map((c) => [c.id, c.name]));
+  const hhName = new Map((households ?? []).map((h) => [h.id, h.name]));
+  const nameFor = (scope: string, id: string) =>
+    scope === "household" ? (hhName.get(id) ?? "Household") : (clientName.get(id) ?? "Client");
+
+  const clientActions: ActionItem[] = [];
+
+  // SLA: reviews due, onboarding, flag-response
+  const { rows, policies } = await slaBoard();
+  for (const r of rows) {
+    const assess = assessClientSla(
+      {
+        riskProfile: r.riskProfile,
+        lastTouchAt: r.lastTouchAt,
+        activatedAt: r.activatedAt,
+        oldestOpenBlockerAt: r.oldestOpenBlockerAt,
+      },
+      policies,
+    );
+    for (const a of assess) {
+      if (a.state === "ok" || a.state === "none") continue;
+      clientActions.push({
+        kind: a.kind,
+        severity: a.state === "breached" || a.state === "overdue" ? "high" : "medium",
+        title: `${
+          a.kind === "periodic_review"
+            ? "Review due"
+            : a.kind === "flag_response"
+              ? "Flag response"
+              : "Onboarding contact"
+        }: ${r.name}`,
+        subtitle: a.detail,
+        href: `/portfolio-review/client/${r.id}`,
+      });
+    }
+  }
+
+  // Open compliance flags
+  const { data: flags } = await supabase
+    .from("portfolio_flags")
+    .select("id, scope, scope_id, severity, code, message")
+    .is("acknowledged_at", null)
+    .limit(40);
+  for (const f of flags ?? []) {
+    clientActions.push({
+      kind: "flag",
+      severity: f.severity === "blocker" ? "high" : "medium",
+      title: `${f.code}: ${nameFor(f.scope, f.scope_id)}`,
+      subtitle: f.message,
+      href: `/portfolio-review/${f.scope}/${f.scope_id}`,
+    });
+  }
+
+  // Follow-ups due
+  const { data: followups } = await supabase
+    .from("contacts")
+    .select("id, client_id, subject, follow_up_at")
+    .not("follow_up_at", "is", null)
+    .lte("follow_up_at", new Date().toISOString())
+    .order("follow_up_at")
+    .limit(30);
+  for (const c of followups ?? []) {
+    clientActions.push({
+      kind: "follow_up",
+      severity: "medium",
+      title: `Follow-up: ${clientName.get(c.client_id) ?? "Client"}`,
+      subtitle: c.subject ?? "Scheduled follow-up",
+      href: `/portfolio-review/client/${c.client_id}`,
+    });
+  }
+
+  // Notable 30-day movements
+  const { data: act } = await supabase
+    .from("portfolio_activity")
+    .select("scope, scope_id, twr")
+    .eq("period", "trailing_30d");
+  for (const a of act ?? []) {
+    const twr = a.twr === null ? null : Number(a.twr);
+    if (twr !== null && Math.abs(twr) >= 0.05) {
+      clientActions.push({
+        kind: "movement",
+        severity: Math.abs(twr) >= 0.1 ? "high" : "low",
+        title: `${twr >= 0 ? "Up" : "Down"} ${(Math.abs(twr) * 100).toFixed(1)}% this month: ${nameFor(a.scope, a.scope_id)}`,
+        subtitle: "Notable 30-day performance to review with the client",
+        href: `/portfolio-review/${a.scope}/${a.scope_id}`,
+      });
+    }
+  }
+
+  // Tickets assigned to me
+  const { data: myTickets } = await supabase
+    .from("tickets")
+    .select("id, number, title, priority, status")
+    .eq("assignee_id", user.id)
+    .not("status", "in", "(resolved,closed)")
+    .limit(20);
+  for (const t of myTickets ?? []) {
+    clientActions.push({
+      kind: "ticket",
+      severity: t.priority === "urgent" ? "high" : t.priority === "high" ? "medium" : "low",
+      title: `${t.number}: ${t.title}`,
+      subtitle: `Assigned to you · ${t.priority}`,
+      href: `/tickets/${t.id}`,
+    });
+  }
+
+  // -------- Operations queue (ops + admin) --------
+  const opsQueue: ActionItem[] = [];
+  if (seesAll) {
+    const tickets = await ticketsList();
+    const now = new Date();
+    for (const t of tickets) {
+      if (t.status === "resolved" || t.status === "closed") continue;
+      if (t.assignee_id === null) {
+        opsQueue.push({
+          kind: "ticket_unassigned",
+          severity: t.priority === "urgent" ? "high" : "medium",
+          title: `${t.number}: ${t.title}`,
+          subtitle: `Unassigned · ${t.priority}`,
+          href: `/tickets/${t.id}`,
+        });
+      } else if (t.due_at && new Date(t.due_at) < now) {
+        opsQueue.push({
+          kind: "ticket_breach",
+          severity: "high",
+          title: `${t.number}: ${t.title}`,
+          subtitle: "SLA breached",
+          href: `/tickets/${t.id}`,
+        });
+      } else if (t.status === "waiting_custodian") {
+        opsQueue.push({
+          kind: "ticket_custodian",
+          severity: "low",
+          title: `${t.number}: ${t.title}`,
+          subtitle: "Waiting on custodian",
+          href: `/tickets/${t.id}`,
+        });
+      }
+    }
+
+    const counts = await intakeStageCounts();
+    if ((counts.new_lead ?? 0) > 0) {
+      opsQueue.push({
+        kind: "intake",
+        severity: "medium",
+        title: `${counts.new_lead} new intake lead(s)`,
+        subtitle: "Awaiting triage",
+        href: "/intake?stage=new_lead",
+      });
+    }
+
+    const job = await lastSyncJob();
+    if (job?.status === "error") {
+      opsQueue.push({
+        kind: "sync_error",
+        severity: "high",
+        title: "Addepar sync failed",
+        subtitle: job.error ?? "See Integrations",
+        href: "/integrations",
+      });
+    }
+    const stats = (job?.stats ?? {}) as {
+      unmapped_entities?: unknown[];
+      unmapped_groups?: unknown[];
+    };
+    const unmapped = (stats.unmapped_entities?.length ?? 0) + (stats.unmapped_groups?.length ?? 0);
+    if (unmapped > 0) {
+      opsQueue.push({
+        kind: "unmapped",
+        severity: "low",
+        title: `${unmapped} unmapped Addepar record(s)`,
+        subtitle: "Map to clients / accounts under Integrations",
+        href: "/integrations",
+      });
+    }
+  }
+
+  clientActions.sort(bySeverity);
+  opsQueue.sort(bySeverity);
+  return { clientActions, opsQueue };
 }
 
 export function addeparConfigured(): boolean {

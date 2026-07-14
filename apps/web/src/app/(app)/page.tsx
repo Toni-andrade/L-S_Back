@@ -17,7 +17,9 @@ import {
   openFlagsCount,
   slaBoard,
   ticketRailCounts,
+  workQueue,
 } from "@/lib/data";
+import { WorkQueue } from "@/components/work-queue";
 import { intakeWebhookConfigured } from "@/lib/intake/config";
 import { PageHeader } from "@/components/shell/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -26,7 +28,7 @@ import { buttonVariants } from "@/components/ui/button";
 
 export default async function DashboardPage() {
   const user = await requireUser();
-  const [stageCounts, ticketCounts, lastReceived, syncJob, aum, flagsCount, sla] =
+  const [stageCounts, ticketCounts, lastReceived, syncJob, aum, flagsCount, sla, queue] =
     await Promise.all([
       intakeStageCounts(),
       ticketRailCounts(),
@@ -35,6 +37,7 @@ export default async function DashboardPage() {
       firmAum(),
       openFlagsCount(),
       slaBoard(),
+      workQueue(user),
     ]);
   const slaAttention = sla.rows.filter((r) => {
     const worst = worstSlaState(
@@ -56,8 +59,8 @@ export default async function DashboardPage() {
   return (
     <div>
       <PageHeader
-        title={`Welcome, ${user.name || user.email}`}
-        subtitle="Firm overview: feeds, intake pipeline and ticket workload."
+        title={`Good to see you, ${user.name || user.email}`}
+        subtitle="Your day: what needs attention across your clients and the desk."
       />
 
       {syncFailed ? (
@@ -70,6 +73,26 @@ export default async function DashboardPage() {
           .
         </div>
       ) : null}
+
+      {/* The operating brain: action center leads the page */}
+      <div
+        className={`mb-6 grid gap-4 ${queue.opsQueue.length > 0 || userSeesAll(user) ? "lg:grid-cols-2" : ""}`}
+      >
+        <WorkQueue
+          title="Needs your attention"
+          subtitle="Reviews due, compliance flags, follow-ups and notable moves across your clients."
+          items={queue.clientActions}
+          emptyText="You're all caught up. No client actions pending."
+        />
+        {userSeesAll(user) ? (
+          <WorkQueue
+            title="Operations queue"
+            subtitle="Unassigned and breaching tickets, intake triage, and data-quality items."
+            items={queue.opsQueue}
+            emptyText="Operations desk is clear."
+          />
+        ) : null}
+      </div>
 
       <div className="mb-6 grid gap-4 sm:grid-cols-3">
         <Card>
