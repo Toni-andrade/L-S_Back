@@ -87,6 +87,13 @@ export function flattenPortfolioView(response: PortfolioQueryResponse): Flattene
       out.push({ path: nextPath, columns: node.columns ?? {}, raw: node });
     }
   };
-  for (const child of response.data.attributes.children ?? []) walk(child, []);
+  // Addepar nests grouped rows under data.attributes.total.children (verified
+  // live 2026-07-14); older/alternate payloads use data.attributes.children.
+  const attrs = response.data.attributes;
+  const roots =
+    attrs.total?.children && attrs.total.children.length > 0
+      ? attrs.total.children
+      : (attrs.children ?? []);
+  for (const child of roots) walk(child, []);
   return out;
 }

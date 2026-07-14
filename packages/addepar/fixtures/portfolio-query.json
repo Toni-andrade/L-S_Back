@@ -18,54 +18,54 @@
     "attributes": {
       "total": {
         "name": "Total",
-        "columns": { "value": 1250000.0, "units": null, "price": null, "asset_class": null, "currency": "USD" }
-      },
-      "children": [
-        {
-          "name": "Souza Family IBKR",
-          "entity_id": 101,
-          "grouping": "holding_account",
-          "columns": { "value": 750000.0, "units": null, "price": null, "asset_class": null, "currency": "USD" },
-          "children": [
-            {
-              "name": "SPDR Gold Shares",
-              "entity_id": 9001,
-              "grouping": "position",
-              "columns": { "value": 150000.0, "units": 500.0, "price": 300.0, "asset_class": "Gold", "currency": "USD", "_custom_symbol": "GLD" },
-              "children": []
-            },
-            {
-              "name": "Vanguard S&P 500 ETF",
-              "entity_id": 9002,
-              "grouping": "position",
-              "columns": { "value": 450000.0, "units": 800.0, "price": 562.5, "asset_class": "US equities", "currency": "USD", "_custom_symbol": "VOO" },
-              "children": []
-            },
-            {
-              "name": "USD Cash",
-              "entity_id": 9003,
-              "grouping": "position",
-              "columns": { "value": 150000.0, "units": 150000.0, "price": 1.0, "asset_class": "Cash & equivalents", "currency": "USD", "_custom_symbol": null },
-              "children": []
-            }
-          ]
-        },
-        {
-          "name": "Souza Family MS",
-          "entity_id": 102,
-          "grouping": "holding_account",
-          "columns": { "value": 500000.0, "units": null, "price": null, "asset_class": null, "currency": "USD" },
-          "children": [
-            {
-              "name": "iShares Core U.S. Aggregate Bond ETF",
-              "entity_id": 9004,
-              "grouping": "position",
-              "columns": { "value": 500000.0, "units": 5000.0, "price": 100.0, "asset_class": "IG fixed income", "currency": "USD", "_custom_symbol": "AGG" },
-              "children": []
-            }
-          ]
-        }
-      ]
+        "columns": { "value": 1250000.0, "units": null, "price": null, "asset_class": null, "currency": "USD" },
+        "children": [
+          {
+            "name": "Souza Family IBKR",
+            "entity_id": 101,
+            "grouping": "holding_account",
+            "columns": { "value": 750000.0, "units": null, "price": null, "asset_class": null, "currency": "USD" },
+            "children": [
+              {
+                "name": "SPDR Gold Shares",
+                "entity_id": 9001,
+                "grouping": "position",
+                "columns": { "value": 150000.0, "units": 500.0, "price": 300.0, "asset_class": "Gold", "currency": "USD", "_custom_symbol": "GLD" },
+                "children": []
+              },
+              {
+                "name": "Vanguard S&P 500 ETF",
+                "entity_id": 9002,
+                "grouping": "position",
+                "columns": { "value": 450000.0, "units": 800.0, "price": 562.5, "asset_class": "US equities", "currency": "USD", "_custom_symbol": "VOO" },
+                "children": []
+              },
+              {
+                "name": "USD Cash",
+                "entity_id": 9003,
+                "grouping": "position",
+                "columns": { "value": 150000.0, "units": 150000.0, "price": 1.0, "asset_class": "Cash & equivalents", "currency": "USD", "_custom_symbol": null },
+                "children": []
+              }
+            ]
+          },
+          {
+            "name": "Souza Family MS",
+            "entity_id": 102,
+            "grouping": "holding_account",
+            "columns": { "value": 500000.0, "units": null, "price": null, "asset_class": null, "currency": "USD" },
+            "children": [
+              {
+                "name": "iShares Core U.S. Aggregate Bond ETF",
+                "entity_id": 9004,
+                "grouping": "position",
+                "columns": { "value": 500000.0, "units": 5000.0, "price": 100.0, "asset_class": "IG fixed income", "currency": "USD", "_custom_symbol": "AGG" },
+                "children": []
+              }
+            ]
+          }
+        ]
+      }
     }
   },
   "included": []
