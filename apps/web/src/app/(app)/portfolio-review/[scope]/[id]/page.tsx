@@ -12,6 +12,7 @@ import { AllocationDonut } from "@/components/charts/allocation-donut";
 import { RiskGauge } from "@/components/charts/risk-gauge";
 import { TwrLine } from "@/components/charts/twr-line";
 import { ActionRail } from "@/components/review/action-rail";
+import { ActivitySummaryCard } from "@/components/review/activity-summary";
 import { FeedsStrip } from "@/components/review/feeds-strip";
 import { FlagsPanel } from "@/components/review/flags-panel";
 import { PageHeader } from "@/components/shell/page-header";
@@ -19,6 +20,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireUser } from "@/lib/auth";
 import {
+  activityForScope,
   addeparConfigured,
   flagsForScope,
   holdingsForScope,
@@ -123,6 +125,7 @@ export default async function ReviewPage({
   const windowTxns = await transactionsForScope(scope, id, { sinceDate: windowStartDate });
   const changes = startSnap ? computePortfolioChanges(startMv, totalMv, windowTxns) : null;
 
+  const activity = await activityForScope(scope, id, "trailing_30d");
   const recentTxns = await transactionsForScope(scope, id, { limit: 8 });
   const cashMv = holdings
     .filter((h) => h.asset_class === "Cash & equivalents")
@@ -181,6 +184,10 @@ export default async function ReviewPage({
           </a>
         ) : null}
       </div>
+
+      {activity ? (
+        <ActivitySummaryCard metrics={activity.metrics} movers={activity.movers} period="trailing_30d" />
+      ) : null}
 
       <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
         <div className="grid gap-4 md:grid-cols-2">

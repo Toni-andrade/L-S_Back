@@ -326,6 +326,41 @@ export async function openFlagsCount(): Promise<number> {
   return count ?? 0;
 }
 
+export async function activityForScope(
+  scope: Scope,
+  scopeId: string,
+  period: "trailing_30d" | "ytd" | "one_year" = "trailing_30d",
+) {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("portfolio_activity")
+    .select(
+      "twr, change_in_value, percent_change, net_flows, income, dividends, market_change, movers, as_of, period",
+    )
+    .eq("scope", scope)
+    .eq("scope_id", scopeId)
+    .eq("period", period)
+    .order("as_of", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (!data) return null;
+  return {
+    metrics: {
+      twr: data.twr === null ? null : Number(data.twr),
+      changeInValue: data.change_in_value === null ? null : Number(data.change_in_value),
+      percentChange: data.percent_change === null ? null : Number(data.percent_change),
+      netFlows: data.net_flows === null ? null : Number(data.net_flows),
+      income: data.income === null ? null : Number(data.income),
+      dividends: data.dividends === null ? null : Number(data.dividends),
+      marketChange: data.market_change === null ? null : Number(data.market_change),
+    },
+    movers: (data.movers ?? null) as
+      | { name: string | null; symbol: string | null; change: number }[]
+      | null,
+    asOf: data.as_of as string,
+  };
+}
+
 export function addeparConfigured(): boolean {
   return Boolean(
     process.env.ADDEPAR_SUBDOMAIN &&
