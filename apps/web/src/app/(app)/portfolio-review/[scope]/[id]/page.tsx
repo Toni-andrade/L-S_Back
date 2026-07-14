@@ -11,8 +11,10 @@ import { notFound } from "next/navigation";
 import { AllocationDonut } from "@/components/charts/allocation-donut";
 import { RiskGauge } from "@/components/charts/risk-gauge";
 import { TwrLine } from "@/components/charts/twr-line";
+import { assessClientSla } from "@ls/domain";
 import { ActionRail } from "@/components/review/action-rail";
 import { ActivitySummaryCard } from "@/components/review/activity-summary";
+import { ClientRelationship } from "@/components/contacts/client-relationship";
 import { FeedsStrip } from "@/components/review/feeds-strip";
 import { FlagsPanel } from "@/components/review/flags-panel";
 import { PageHeader } from "@/components/shell/page-header";
@@ -22,13 +24,17 @@ import { requireUser } from "@/lib/auth";
 import {
   activityForScope,
   addeparConfigured,
+  contactsForClient,
   flagsForScope,
   holdingsForScope,
   lastReview,
   lastSyncJob,
+  lastTouchForClient,
   latestSnapshot,
+  oldestOpenBlockerForClient,
   performanceSeries,
   riskFactors,
+  slaPolicies,
   snapshotByDate,
   snapshotDates,
   transactionsForScope,
@@ -126,6 +132,39 @@ export default async function ReviewPage({
   const changes = startSnap ? computePortfolioChanges(startMv, totalMv, windowTxns) : null;
 
   const activity = await activityForScope(scope, id, "trailing_30d");
+
+  // Client relationship: contacts timeline + SLA (client scope only)
+  let relationship: {
+    assessments: ReturnType<typeof assessClientSla>;
+    contacts: Awaited<ReturnType<typeof contactsForClient>>;
+    userName: Map<string, string>;
+  } | null = null;
+  if (scope === "client") {
+    const [contacts, policies, lastTouchAt, oldestOpenBlockerAt, { data: users }] =
+      await Promise.all([
+        contactsForClient(id),
+        slaPolicies(),
+        lastTouchForClient(id),
+        oldestOpenBlockerForClient(id),
+        supabase.from("users").select("id, name, email"),
+      ]);
+    const assessments = assessClientSla(
+      {
+        riskProfile: (entity as { risk_profile?: "conservador" | "moderado" | "agressivo" | null })
+          .risk_profile ?? null,
+        lastTouchAt,
+        activatedAt: null,
+        oldestOpenBlockerAt,
+      },
+      policies,
+    );
+    relationship = {
+      assessments,
+      contacts,
+      userName: new Map((users ?? []).map((u) => [u.id, u.name || u.email])),
+    };
+  }
+
   const recentTxns = await transactionsForScope(scope, id, { limit: 8 });
   const cashMv = holdings
     .filter((h) => h.asset_class === "Cash & equivalents")
@@ -420,6 +459,17 @@ export default async function ReviewPage({
           <div className="md:col-span-2">
             <FlagsPanel flags={flags} />
           </div>
+
+          {relationship ? (
+            <div className="md:col-span-2">
+              <ClientRelationship
+                clientId={id}
+                assessments={relationship.assessments}
+                contacts={relationship.contacts}
+                userName={relationship.userName}
+              />
+            </div>
+          ) : null}
 
           <Card className="md:col-span-2">
             <CardContent className="pt-5 text-sm text-slate-400">

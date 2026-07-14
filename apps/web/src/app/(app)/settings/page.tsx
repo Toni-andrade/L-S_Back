@@ -6,15 +6,20 @@ import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { updateSlaPolicy } from "@/lib/actions/contacts";
 import { addAllowedEmail, removeAllowedEmail, setUserActive, setUserRole } from "./actions";
 
 export default async function SettingsPage() {
   const me = await requireRole("admin");
   const supabase = await createClient();
 
-  const [{ data: users }, { data: allowed }] = await Promise.all([
+  const [{ data: users }, { data: allowed }, { data: slas }] = await Promise.all([
     supabase.from("users").select("id, email, name, role, active").order("created_at"),
     supabase.from("allowed_emails").select("id, email, note").order("email"),
+    supabase
+      .from("sla_policies")
+      .select("id, kind, name, threshold_days, business_days, active")
+      .order("kind"),
   ]);
 
   return (
@@ -145,6 +150,68 @@ export default async function SettingsPage() {
           </CardContent>
         </Card>
       </div>
+
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle>SLA policies</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-hairline text-left text-xs uppercase tracking-wide text-slate-400">
+                <th className="py-2 font-medium">Policy</th>
+                <th className="py-2 font-medium">Kind</th>
+                <th className="py-2 font-medium">Threshold</th>
+                <th className="py-2 font-medium">Active</th>
+                <th className="py-2" />
+              </tr>
+            </thead>
+            <tbody>
+              {(slas ?? []).map((p) => (
+                <tr key={p.id} className="border-b border-hairline last:border-0">
+                  <td className="py-2.5 text-oxford">{p.name}</td>
+                  <td className="py-2.5 text-slate-500">{p.kind.replace("_", " ")}</td>
+                  <td className="py-2.5">
+                    <form action={updateSlaPolicy} className="flex items-center gap-2">
+                      <input type="hidden" name="id" value={p.id} />
+                      <input
+                        type="number"
+                        name="thresholdDays"
+                        min="1"
+                        defaultValue={p.threshold_days}
+                        className="w-16 rounded-lg border border-hairline px-2 py-1 text-sm"
+                      />
+                      <label className="flex items-center gap-1 text-xs text-slate-500">
+                        <input type="checkbox" name="businessDays" defaultChecked={p.business_days} />{" "}
+                        biz days
+                      </label>
+                      <label className="flex items-center gap-1 text-xs text-slate-500">
+                        <input type="checkbox" name="active" defaultChecked={p.active} value="on" />{" "}
+                        active
+                      </label>
+                      <Button type="submit" variant="ghost" size="sm">
+                        Save
+                      </Button>
+                    </form>
+                  </td>
+                  <td className="py-2.5">
+                    {p.active ? (
+                      <Badge variant="success">on</Badge>
+                    ) : (
+                      <Badge variant="default">off</Badge>
+                    )}
+                  </td>
+                  <td />
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="mt-3 text-xs text-slate-400">
+            Review cadence varies by risk profile. Thresholds are measured against the client
+            contact + review timeline; changes are audit-logged.
+          </p>
+        </CardContent>
+      </Card>
     </div>
   );
 }

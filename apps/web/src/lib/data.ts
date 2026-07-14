@@ -361,6 +361,101 @@ export async function activityForScope(
   };
 }
 
+// ---------------------------------------------------------------------------
+// Contacts + SLA (Phase: contact timelines)
+// ---------------------------------------------------------------------------
+import type { SlaPolicy } from "@ls/domain";
+
+export async function slaPolicies(): Promise<SlaPolicy[]> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("sla_policies")
+    .select("kind, name, threshold_days, business_days, applies_to, active")
+    .eq("active", true);
+  return (data ?? []).map((p) => ({
+    kind: p.kind,
+    name: p.name,
+    thresholdDays: Number(p.threshold_days),
+    businessDays: p.business_days,
+    appliesTo: (p.applies_to ?? {}) as { risk_profile?: string[] },
+  }));
+}
+
+export async function contactsForClient(clientId: string, limit = 50) {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("contacts")
+    .select("id, type, direction, occurred_at, subject, notes, logged_by, follow_up_at")
+    .eq("client_id", clientId)
+    .order("occurred_at", { ascending: false })
+    .limit(limit);
+  return data ?? [];
+}
+
+/** Latest "touch" for a client: newest of any contact or portfolio review. */
+export async function lastTouchForClient(clientId: string): Promise<Date | null> {
+  const supabase = await createClient();
+  const [{ data: c }, { data: r }] = await Promise.all([
+    supabase
+      .from("contacts")
+      .select("occurred_at")
+      .eq("client_id", clientId)
+      .order("occurred_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    supabase
+      .from("portfolio_reviews")
+      .select("reviewed_at")
+      .eq("scope", "client")
+      .eq("scope_id", clientId)
+      .order("reviewed_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
+  const times = [c?.occurred_at, r?.reviewed_at].filter(Boolean).map((t) => new Date(t as string));
+  return times.length ? new Date(Math.max(...times.map((d) => d.getTime()))) : null;
+}
+
+export async function oldestOpenBlockerForClient(clientId: string): Promise<Date | null> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("portfolio_flags")
+    .select("created_at")
+    .eq("scope", "client")
+    .eq("scope_id", clientId)
+    .eq("severity", "blocker")
+    .is("acknowledged_at", null)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  return data?.created_at ? new Date(data.created_at) : null;
+}
+
+/** SLA board across all visible clients (RLS-scoped). */
+export async function slaBoard() {
+  const supabase = await createClient();
+  const [{ data: clients }, policies] = await Promise.all([
+    supabase.from("clients").select("id, name, risk_profile, status, created_at"),
+    slaPolicies(),
+  ]);
+  const rows = await Promise.all(
+    (clients ?? []).map(async (c) => ({
+      id: c.id,
+      name: c.name,
+      riskProfile: c.risk_profile as
+        | "conservador"
+        | "moderado"
+        | "agressivo"
+        | null,
+      status: c.status,
+      lastTouchAt: await lastTouchForClient(c.id),
+      oldestOpenBlockerAt: await oldestOpenBlockerForClient(c.id),
+      activatedAt: c.status === "active" ? new Date(c.created_at) : null,
+    })),
+  );
+  return { rows, policies };
+}
+
 export function addeparConfigured(): boolean {
   return Boolean(
     process.env.ADDEPAR_SUBDOMAIN &&

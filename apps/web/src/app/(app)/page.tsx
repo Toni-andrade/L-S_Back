@@ -1,5 +1,11 @@
-import { INTAKE_STAGES, INTAKE_STATUS_LABEL, formatCurrencyUS } from "@ls/domain";
-import { FileText, Flag, Inbox, Plug, Ticket, Wallet } from "lucide-react";
+import {
+  INTAKE_STAGES,
+  INTAKE_STATUS_LABEL,
+  assessClientSla,
+  formatCurrencyUS,
+  worstSlaState,
+} from "@ls/domain";
+import { CalendarClock, FileText, Flag, Inbox, Plug, Ticket, Wallet } from "lucide-react";
 import Link from "next/link";
 import { requireUser, userSeesAll } from "@/lib/auth";
 import {
@@ -9,6 +15,7 @@ import {
   lastIntakeReceivedAt,
   lastSyncJob,
   openFlagsCount,
+  slaBoard,
   ticketRailCounts,
 } from "@/lib/data";
 import { intakeWebhookConfigured } from "@/lib/intake/config";
@@ -19,14 +26,30 @@ import { buttonVariants } from "@/components/ui/button";
 
 export default async function DashboardPage() {
   const user = await requireUser();
-  const [stageCounts, ticketCounts, lastReceived, syncJob, aum, flagsCount] = await Promise.all([
-    intakeStageCounts(),
-    ticketRailCounts(),
-    lastIntakeReceivedAt(),
-    lastSyncJob(),
-    firmAum(),
-    openFlagsCount(),
-  ]);
+  const [stageCounts, ticketCounts, lastReceived, syncJob, aum, flagsCount, sla] =
+    await Promise.all([
+      intakeStageCounts(),
+      ticketRailCounts(),
+      lastIntakeReceivedAt(),
+      lastSyncJob(),
+      firmAum(),
+      openFlagsCount(),
+      slaBoard(),
+    ]);
+  const slaAttention = sla.rows.filter((r) => {
+    const worst = worstSlaState(
+      assessClientSla(
+        {
+          riskProfile: r.riskProfile,
+          lastTouchAt: r.lastTouchAt,
+          activatedAt: r.activatedAt,
+          oldestOpenBlockerAt: r.oldestOpenBlockerAt,
+        },
+        sla.policies,
+      ),
+    );
+    return worst === "breached" || worst === "overdue" || worst === "due_soon";
+  }).length;
 
   const syncFailed = syncJob?.status === "error";
 
@@ -149,6 +172,27 @@ export default async function DashboardPage() {
               <p className="mt-1 text-sm text-slate-500">
                 Unacknowledged portfolio flags across all households and clients.
               </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <CalendarClock className="h-4 w-4 text-royal" /> Contacts due
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div
+                className={`text-2xl font-semibold tabular-nums ${slaAttention > 0 ? "text-alert" : "text-oxford"}`}
+              >
+                {slaAttention}
+              </div>
+              <p className="mt-1 text-sm text-slate-500">
+                Clients overdue or due soon against their SLA cadence.
+              </p>
+              <Link href="/contacts" className="mt-2 inline-block text-sm text-royal hover:underline">
+                View contacts &amp; SLAs →
+              </Link>
             </CardContent>
           </Card>
 

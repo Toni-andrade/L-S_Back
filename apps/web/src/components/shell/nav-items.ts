@@ -1,4 +1,5 @@
 import {
+  CalendarClock,
   Inbox,
   Landmark,
   LayoutDashboard,
@@ -27,6 +28,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/portfolio-review", label: "Portfolio Review", icon: PieChart },
   { href: "/clients", label: "Clients", icon: Users },
   { href: "/accounts", label: "Accounts", icon: Landmark },
+  { href: "/contacts", label: "Contacts & SLAs", icon: CalendarClock },
   { href: "/intake", label: "Intake Pipeline", icon: Inbox },
   { href: "/proposals", label: "Proposals", icon: FileText },
   { href: "/models", label: "Models", icon: Layers },
