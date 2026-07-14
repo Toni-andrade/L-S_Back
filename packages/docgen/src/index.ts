@@ -19,3 +19,11 @@ export {
 } from "./brief";
 export { EMAIL_SUBJECT, generateCarta, generateEmailDraft } from "./text";
 export { renderProposalPptx, type RenderResult } from "./pptx";
+export {
+  renderClientStatement,
+  type ClientStatementInput,
+  type StatementActivity,
+  type StatementHolding,
+  type StatementPerformance,
+  type StatementResult,
+} from "./statement";

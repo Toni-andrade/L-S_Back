@@ -14,6 +14,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { updateClientProfile } from "@/lib/actions/clients";
 import { deleteDocument, uploadDocument } from "@/lib/actions/documents";
+import { generateClientStatement } from "@/lib/actions/reports";
 import { startWorkflow } from "@/lib/actions/workflows";
 import { requireUser } from "@/lib/auth";
 import {
@@ -196,7 +197,17 @@ export default async function ClientProfilePage({
           {/* Documents */}
           <Card>
             <CardHeader>
-              <CardTitle>Documents ({documents.length})</CardTitle>
+              <CardTitle className="flex items-center justify-between">
+                <span>Documents ({documents.length})</span>
+                {snapshot ? (
+                  <form action={generateClientStatement}>
+                    <input type="hidden" name="clientId" value={id} />
+                    <Button type="submit" variant="outline" size="sm">
+                      Generate statement
+                    </Button>
+                  </form>
+                ) : null}
+              </CardTitle>
             </CardHeader>
             <CardContent className="flex flex-col gap-3">
               <form action={uploadDocument} className="flex flex-wrap items-end gap-2">
