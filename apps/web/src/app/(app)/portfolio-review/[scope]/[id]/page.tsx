@@ -15,6 +15,7 @@ import { assessClientSla } from "@ls/domain";
 import { ActionRail } from "@/components/review/action-rail";
 import { ActivitySummaryCard } from "@/components/review/activity-summary";
 import { FixedIncomeSection } from "@/components/review/fixed-income-section";
+import { IncomeCalendarSection } from "@/components/review/income-calendar";
 import { HoldingsTable } from "@/components/review/holdings-table";
 import { ClientRelationship } from "@/components/contacts/client-relationship";
 import { FeedsStrip } from "@/components/review/feeds-strip";
@@ -201,6 +202,18 @@ export default async function ReviewPage({
   const cashMv = holdings
     .filter((h) => h.asset_class === "Cash & equivalents")
     .reduce((s, h) => s + h.market_value, 0);
+  const incomeHoldings = holdings.map((h) => ({
+    marketValue: h.market_value,
+    quantity: h.quantity,
+    incomePerUnit: h.income_per_unit,
+    frequency: h.income_frequency,
+    nextExDate: h.next_ex_date,
+    maturityDate: h.maturity_date,
+    couponRate: h.coupon_rate,
+    assetClass: h.asset_class,
+    symbol: h.symbol,
+    description: h.description,
+  }));
 
 
   return (
@@ -440,6 +453,8 @@ export default async function ReviewPage({
           </Card>
 
           <FixedIncomeSection holdings={fiHoldings} deposits={recentDeposits} />
+
+          <IncomeCalendarSection holdings={incomeHoldings} />
 
           <Card className="md:col-span-2">
             <CardHeader>

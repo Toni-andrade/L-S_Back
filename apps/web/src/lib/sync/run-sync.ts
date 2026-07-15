@@ -28,6 +28,11 @@ const COL = {
   currency: process.env.ADDEPAR_COL_CURRENCY ?? "currency_factor",
   assetClass: process.env.ADDEPAR_COL_ASSET_CLASS ?? "_custom_ls_asset_class_1285149",
   symbol: process.env.ADDEPAR_COL_SYMBOL ?? "_md_ticker",
+  maturityDate: "maturity_date",
+  couponRate: "coupon_rate",
+  incomePerUnit: "projected_annual_income",
+  incomeFrequency: "dividends_per_year",
+  nextExDate: "next_ex_div_date",
 };
 const HOLDING_COLUMNS = [
   COL.value,
@@ -36,6 +41,11 @@ const HOLDING_COLUMNS = [
   COL.assetClass,
   COL.currency,
   COL.symbol,
+  COL.maturityDate,
+  COL.couponRate,
+  COL.incomePerUnit,
+  COL.incomeFrequency,
+  COL.nextExDate,
 ].map((key) => ({ key }));
 
 export type SyncResult = {
@@ -147,6 +157,15 @@ export async function runAddeparSync(options: {
         price: pos.columns[COL.price] == null ? null : Number(pos.columns[COL.price]),
         market_value: value,
         currency: (pos.columns[COL.currency] as string | undefined) ?? "USD",
+        maturity_date: (pos.columns[COL.maturityDate] as string | undefined) || null,
+        coupon_rate: pos.columns[COL.couponRate] == null ? null : Number(pos.columns[COL.couponRate]),
+        income_per_unit:
+          pos.columns[COL.incomePerUnit] == null ? null : Number(pos.columns[COL.incomePerUnit]),
+        income_frequency:
+          pos.columns[COL.incomeFrequency] == null
+            ? null
+            : Math.round(Number(pos.columns[COL.incomeFrequency])),
+        next_ex_date: (pos.columns[COL.nextExDate] as string | undefined) || null,
         raw: pos.raw,
       });
     }

@@ -3,14 +3,16 @@ import {
   INTAKE_STATUS_LABEL,
   assessClientSla,
   formatCurrencyUS,
+  formatPercentUS,
   worstSlaState,
 } from "@ls/domain";
-import { CalendarClock, FileText, Flag, Inbox, Plug, Ticket, Wallet } from "lucide-react";
+import { CalendarClock, Coins, FileText, Flag, Inbox, Plug, Ticket, Wallet } from "lucide-react";
 import Link from "next/link";
 import { requireUser, userSeesAll } from "@/lib/auth";
 import {
   addeparConfigured,
   firmAum,
+  incomeRollup,
   intakeStageCounts,
   lastIntakeReceivedAt,
   lastSyncJob,
@@ -29,13 +31,14 @@ import { buttonVariants } from "@/components/ui/button";
 export default async function DashboardPage() {
   const user = await requireUser();
   const sla = await slaBoard();
-  const [stageCounts, ticketCounts, lastReceived, syncJob, aum, flagsCount, queue] =
+  const [stageCounts, ticketCounts, lastReceived, syncJob, aum, income, flagsCount, queue] =
     await Promise.all([
       intakeStageCounts(),
       ticketRailCounts(),
       lastIntakeReceivedAt(),
       lastSyncJob(),
       firmAum(),
+      incomeRollup(),
       openFlagsCount(),
       workQueue(user, sla),
     ]);
@@ -175,6 +178,42 @@ export default async function DashboardPage() {
               ) : (
                 <p className="text-sm text-slate-500">
                   Populates from the first Addepar snapshot.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Coins className="h-4 w-4 text-royal" />{" "}
+                {userSeesAll(user) ? "Firm income" : "Your income"}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {income ? (
+                <>
+                  <div className="text-2xl font-semibold tabular-nums text-oxford">
+                    {formatCurrencyUS(income.total)}
+                  </div>
+                  <div className="mb-2 text-xs text-slate-400">
+                    projected annual · {formatCurrencyUS(income.monthly)}/mo
+                    {income.yield !== null ? ` · ${formatPercentUS(income.yield * 100, 2)} yield` : ""}
+                  </div>
+                  <div className="flex flex-col gap-1 text-sm">
+                    {income.byAdvisor.slice(0, 5).map((a) => (
+                      <div key={a.advisor} className="flex items-center justify-between">
+                        <span className="text-slate-500">{a.advisor}</span>
+                        <span className="tabular-nums text-oxford">
+                          {formatCurrencyUS(a.income)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <p className="text-sm text-slate-500">
+                  Projected dividend and coupon income populates from the first Addepar snapshot.
                 </p>
               )}
             </CardContent>

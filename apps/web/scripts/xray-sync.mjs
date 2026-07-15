@@ -36,6 +36,9 @@ const COL = {
   maturityDate: "maturity_date",
   couponRate: "coupon_rate",
   modifiedDuration: "modified_duration",
+  incomePerUnit: "projected_annual_income",
+  incomeFrequency: "dividends_per_year",
+  nextExDate: "next_ex_div_date",
 };
 const COL_KEYS = [...new Set(Object.values(COL))];
 const TWR = env.ADDEPAR_TWR_COLUMN ?? "time_weighted_return";
@@ -205,6 +208,12 @@ async function main() {
         maturity_date: pos.columns?.[COL.maturityDate] || null,
         coupon_rate: num(pos.columns?.[COL.couponRate]),
         modified_duration: num(pos.columns?.[COL.modifiedDuration]),
+        income_per_unit: num(pos.columns?.[COL.incomePerUnit]),
+        income_frequency: (() => {
+          const f = num(pos.columns?.[COL.incomeFrequency]);
+          return f === null ? null : Math.round(f);
+        })(),
+        next_ex_date: pos.columns?.[COL.nextExDate] || null,
         raw: {
           sub_asset_class: pos.columns?.[COL.subAssetClass] ?? null,
           security_type: pos.columns?.[COL.securityType] ?? null,

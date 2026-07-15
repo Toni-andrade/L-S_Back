@@ -1,4 +1,5 @@
 import "server-only";
+import { annualIncome } from "@ls/domain";
 import { createClient } from "@/lib/supabase/server";
 
 export type Scope = "household" | "client";
@@ -22,6 +23,9 @@ export type HoldingRow = {
   maturity_date: string | null;
   coupon_rate: number | null;
   modified_duration: number | null;
+  income_per_unit: number | null;
+  income_frequency: number | null;
+  next_ex_date: string | null;
 };
 
 export type AccountRow = {
@@ -115,7 +119,7 @@ export async function holdingsForScope(
     supabase
       .from("holdings")
       .select(
-        "id, account_id, as_of, symbol, description, asset_class, quantity, price, market_value, currency, weight, cost_basis, unrealized_gain, twr_ytd, twr_1y, maturity_date, coupon_rate, modified_duration",
+        "id, account_id, as_of, symbol, description, asset_class, quantity, price, market_value, currency, weight, cost_basis, unrealized_gain, twr_ytd, twr_1y, maturity_date, coupon_rate, modified_duration, income_per_unit, income_frequency, next_ex_date",
       )
       .eq("snapshot_id", snapshotId)
       .in("account_id", accountIds),
@@ -141,6 +145,9 @@ export async function holdingsForScope(
       coupon_rate: n(h.coupon_rate),
       modified_duration: n(h.modified_duration),
       maturity_date: h.maturity_date ?? null,
+      income_per_unit: n(h.income_per_unit),
+      income_frequency: n(h.income_frequency),
+      next_ex_date: h.next_ex_date ?? null,
       clientId: acct?.client_id ?? "",
       custodian: acct?.custodian ?? "other",
       accountMasked: acct?.account_number_masked ?? "",
@@ -387,6 +394,110 @@ export async function firmAum(): Promise<{
     .map(([advisor, mv]) => ({ advisor, mv }))
     .sort((a, b) => b.mv - a.mv);
   return { total, asOf: snapshot.as_of, byAdvisor };
+}
+
+export type IncomeRollup = {
+  total: number; // projected annual income
+  monthly: number;
+  yield: number | null;
+  asOf: string;
+  byAdvisor: { advisor: string; income: number }[];
+  byClient: {
+    clientId: string;
+    name: string;
+    advisor: string;
+    income: number;
+    marketValue: number;
+    yield: number | null;
+  }[];
+};
+
+/**
+ * Projected-income rollup: income is computed per client (dividends + estimated
+ * coupon interest) and aggregated up to advisor and firm. RLS scopes the
+ * visible client set, so the same function serves an advisor (their book) and
+ * an admin/ops user (the whole firm) - mirrors firmAum(). Returns null before
+ * the first snapshot.
+ */
+export async function incomeRollup(): Promise<IncomeRollup | null> {
+  const snapshot = await latestSnapshot();
+  if (!snapshot) return null;
+
+  const supabase = await createClient();
+  const [{ data: holdings }, { data: accounts }, { data: clients }, { data: users }] =
+    await Promise.all([
+      supabase
+        .from("holdings")
+        .select("account_id, market_value, quantity, income_per_unit, coupon_rate, maturity_date")
+        .eq("snapshot_id", snapshot.id),
+      supabase.from("accounts").select("id, client_id"),
+      supabase.from("clients").select("id, name, advisor_id"),
+      supabase.from("users").select("id, name, email"),
+    ]);
+  if (!holdings || holdings.length === 0) return null;
+
+  const clientByAccount = new Map((accounts ?? []).map((a) => [a.id, a.client_id]));
+  const clientInfo = new Map((clients ?? []).map((c) => [c.id, c]));
+  const nameByUser = new Map((users ?? []).map((u) => [u.id, u.name || u.email]));
+  const n = (v: unknown) => (v === null || v === undefined ? null : Number(v));
+
+  const incomeByClient = new Map<string, number>();
+  const mvByClient = new Map<string, number>();
+  let total = 0;
+  let totalMv = 0;
+  for (const h of holdings) {
+    const cid = clientByAccount.get(h.account_id);
+    if (!cid) continue;
+    const mv = Number(h.market_value);
+    const inc = annualIncome({
+      marketValue: mv,
+      quantity: n(h.quantity),
+      incomePerUnit: n(h.income_per_unit),
+      couponRate: n(h.coupon_rate),
+      maturityDate: h.maturity_date ?? null,
+      frequency: null,
+      nextExDate: null,
+      assetClass: null,
+      symbol: null,
+      description: null,
+    });
+    total += inc;
+    totalMv += mv;
+    incomeByClient.set(cid, (incomeByClient.get(cid) ?? 0) + inc);
+    mvByClient.set(cid, (mvByClient.get(cid) ?? 0) + mv);
+  }
+
+  const byClient = [...incomeByClient.entries()]
+    .map(([clientId, income]) => {
+      const info = clientInfo.get(clientId);
+      const advisorId = info?.advisor_id ?? null;
+      const clientMv = mvByClient.get(clientId) ?? 0;
+      return {
+        clientId,
+        name: info?.name ?? "Client",
+        advisor: advisorId ? (nameByUser.get(advisorId) ?? "Unknown advisor") : "Unassigned",
+        income,
+        marketValue: clientMv,
+        yield: clientMv > 0 ? income / clientMv : null,
+      };
+    })
+    .filter((c) => c.income > 0)
+    .sort((a, b) => b.income - a.income);
+
+  const byAdvisorMap = new Map<string, number>();
+  for (const c of byClient) byAdvisorMap.set(c.advisor, (byAdvisorMap.get(c.advisor) ?? 0) + c.income);
+  const byAdvisor = [...byAdvisorMap.entries()]
+    .map(([advisor, income]) => ({ advisor, income }))
+    .sort((a, b) => b.income - a.income);
+
+  return {
+    total,
+    monthly: total / 12,
+    yield: totalMv > 0 ? total / totalMv : null,
+    asOf: snapshot.as_of,
+    byAdvisor,
+    byClient,
+  };
 }
 
 export async function openFlagsCount(): Promise<number> {

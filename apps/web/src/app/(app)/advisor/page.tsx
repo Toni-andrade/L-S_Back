@@ -1,11 +1,11 @@
-import { formatCurrencyUS } from "@ls/domain";
+import { formatCurrencyUS, formatPercentUS } from "@ls/domain";
 import { Banknote, CalendarClock, Coins, TrendingDown, Wallet } from "lucide-react";
 import Link from "next/link";
 import { PageHeader } from "@/components/shell/page-header";
 import { WorkQueue } from "@/components/work-queue";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { requireUser } from "@/lib/auth";
-import { advisorCenter, workQueue } from "@/lib/data";
+import { requireUser, userSeesAll } from "@/lib/auth";
+import { advisorCenter, incomeRollup, workQueue } from "@/lib/data";
 
 const CUSTODIAN_LABEL: Record<string, string> = {
   ibkr: "IBKR",
@@ -47,7 +47,12 @@ function SectionCard({
 
 export default async function AdvisorCenterPage() {
   const user = await requireUser();
-  const [center, queue] = await Promise.all([advisorCenter(), workQueue(user)]);
+  const [center, queue, income] = await Promise.all([
+    advisorCenter(),
+    workQueue(user),
+    incomeRollup(),
+  ]);
+  const firmwide = userSeesAll(user);
 
   const now = new Date();
   const greeting =
@@ -75,6 +80,56 @@ export default async function AdvisorCenterPage() {
           limit={8}
         />
       </div>
+
+      {/* Projected income: per-client, rolled up to the book (firm for admin/ops) */}
+      {income && income.total > 0 ? (
+        <div className="mb-6 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)]">
+          <div className="grid grid-cols-3 gap-3">
+            {[
+              { label: "Projected annual income", value: formatCurrencyUS(income.total) },
+              { label: "Est. monthly income", value: formatCurrencyUS(income.monthly) },
+              {
+                label: firmwide ? "Firm yield" : "Book yield",
+                value: income.yield === null ? "—" : formatPercentUS(income.yield * 100, 2),
+              },
+            ].map((k) => (
+              <div key={k.label} className="rounded-card border border-hairline bg-white px-4 py-3">
+                <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-slate-400">
+                  <Coins className="h-3.5 w-3.5 text-royal" /> {k.label}
+                </div>
+                <div className="mt-1 text-lg font-semibold tabular-nums text-oxford">{k.value}</div>
+              </div>
+            ))}
+          </div>
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-sm">
+                <Coins className="h-4 w-4 text-royal" /> Income by client
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ul className="flex flex-col divide-y divide-hairline text-sm">
+                {income.byClient.slice(0, 6).map((c) => (
+                  <li key={c.clientId} className="flex items-center justify-between gap-3 py-1.5">
+                    <Link
+                      href={`/clients/${c.clientId}`}
+                      className="truncate text-royal hover:underline"
+                    >
+                      {c.name}
+                    </Link>
+                    <span className="flex items-baseline gap-2 whitespace-nowrap">
+                      <span className="tabular-nums text-oxford">{formatCurrencyUS(c.income)}</span>
+                      <span className="tabular-nums text-xs text-slate-400">
+                        {c.yield === null ? "—" : formatPercentUS(c.yield * 100, 1)}
+                      </span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+        </div>
+      ) : null}
 
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Cash to deploy */}
