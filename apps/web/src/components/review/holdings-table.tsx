@@ -118,6 +118,7 @@ export function HoldingsTable({
               <th className="py-2 text-right font-medium">Gain %</th>
               <th className="py-2 text-right font-medium">% Port</th>
               <th className="py-2 text-right font-medium">YTD</th>
+              <th className="py-2 text-right font-medium">1Y</th>
             </tr>
           </thead>
           <tbody>
@@ -126,7 +127,7 @@ export function HoldingsTable({
             ))}
             {groups.length === 0 ? (
               <tr>
-                <td colSpan={9} className="py-4 text-center text-slate-400">
+                <td colSpan={10} className="py-4 text-center text-slate-400">
                   No holdings match the filter.
                 </td>
               </tr>
@@ -160,7 +161,7 @@ function FragmentGroup({
         <td className="py-1.5 text-right font-semibold tabular-nums text-oxford">
           {totalMv > 0 ? ((group.subtotal / totalMv) * 100).toFixed(1) : "0.0"}%
         </td>
-        <td />
+        <td colSpan={2} />
       </tr>
       {group.rows.map((h) => {
         const gp = gainPct(h);
@@ -199,6 +200,13 @@ function FragmentGroup({
               }`}
             >
               {h.twr_ytd !== null ? formatPercentUS(h.twr_ytd * 100, 1) : "—"}
+            </td>
+            <td
+              className={`py-2 text-right tabular-nums ${
+                h.twr_1y === null ? "text-slate-300" : h.twr_1y >= 0 ? "text-verde" : "text-alert"
+              }`}
+            >
+              {h.twr_1y !== null ? formatPercentUS(h.twr_1y * 100, 1) : "—"}
             </td>
           </tr>
         );

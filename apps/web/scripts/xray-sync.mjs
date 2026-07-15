@@ -119,10 +119,12 @@ async function twrByPosition(entityId, start, end) {
   const map = new Map();
   if (!res.ok) return map; // TWR is best-effort; degrade silently
   const json = await res.json();
+  // Position leaf nodes carry NO entity_id - only `name`. Key by
+  // account entity_id + position name (verified 100% match vs holdings).
   for (const acct of json.data?.attributes?.total?.children ?? []) {
     for (const pos of acct.children ?? []) {
-      if (acct.entity_id != null && pos.entity_id != null) {
-        map.set(`${acct.entity_id}:${pos.entity_id}`, num(pos.columns?.[TWR]));
+      if (acct.entity_id != null && pos.name) {
+        map.set(`${acct.entity_id}|${pos.name}`, num(pos.columns?.[TWR]));
       }
     }
   }
@@ -183,7 +185,7 @@ async function main() {
       }
       held++;
       const cost = num(pos.columns?.[COL.costBasis]);
-      const key = `${acct.entity_id}:${pos.entity_id}`;
+      const key = `${acct.entity_id}|${pos.name}`;
       rows.push({
         snapshot_id: snapshot.id,
         account_id: accountId,
