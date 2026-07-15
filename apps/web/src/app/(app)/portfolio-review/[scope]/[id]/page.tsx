@@ -62,7 +62,16 @@ export default async function ReviewPage({
   const { asOf, period: periodParam } = await searchParams;
   if (scopeParam !== "household" && scopeParam !== "client") notFound();
   const scope = scopeParam as Scope;
-  const period = periodParam === "one_year" ? "one_year" : "ytd";
+  const period: "ytd" | "one_year" | "since_inception" =
+    periodParam === "one_year"
+      ? "one_year"
+      : periodParam === "since_inception"
+        ? "since_inception"
+        : periodParam === "ytd"
+          ? "ytd"
+          : scopeParam === "client"
+            ? "since_inception"
+            : "ytd";
 
   const supabase = await createClient();
   const entity =
@@ -267,7 +276,7 @@ export default async function ReviewPage({
                 <div className="flex items-center justify-between">
                   <CardTitle>Performance (Total Return)</CardTitle>
                   <div className="flex gap-1 text-xs">
-                    {(["ytd", "one_year"] as const).map((p) => (
+                    {(["ytd", "one_year", "since_inception"] as const).map((p) => (
                       <Link
                         key={p}
                         href={`/portfolio-review/${scope}/${id}?period=${p}${snapshot ? `&asOf=${snapshot.as_of}` : ""}`}
@@ -277,7 +286,7 @@ export default async function ReviewPage({
                             : "rounded-md px-2 py-1 text-slate-500 hover:text-oxford"
                         }
                       >
-                        {p === "ytd" ? "YTD" : "1Y"}
+                        {p === "ytd" ? "YTD" : p === "one_year" ? "1Y" : "Since Inception"}
                       </Link>
                     ))}
                   </div>

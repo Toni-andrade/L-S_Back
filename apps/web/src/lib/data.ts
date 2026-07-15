@@ -206,7 +206,11 @@ export async function transactionsForScope(
   });
 }
 
-export async function performanceSeries(scope: Scope, scopeId: string, period: "ytd" | "one_year") {
+export async function performanceSeries(
+  scope: Scope,
+  scopeId: string,
+  period: "ytd" | "one_year" | "since_inception",
+) {
   const supabase = await createClient();
   const { data } = await supabase
     .from("performance_points")
