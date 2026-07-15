@@ -148,23 +148,62 @@ export async function holdingsForScope(
   });
 }
 
+export type TransactionRow = {
+  id: string;
+  account_id: string;
+  trade_date: string;
+  activity: string;
+  description: string | null;
+  symbol: string | null;
+  amount: number;
+  currency: string;
+  quantity: number | null;
+  pricePerShare: number | null;
+  custodian: string;
+  accountMasked: string;
+  rawType: string | null;
+};
+
 export async function transactionsForScope(
   scope: Scope,
   scopeId: string,
-  opts: { sinceDate?: string; limit?: number } = {},
-) {
+  opts: { sinceDate?: string; limit?: number; activities?: string[] } = {},
+): Promise<TransactionRow[]> {
   const supabase = await createClient();
   const accountIds = await accountIdsForScope(scope, scopeId);
   if (accountIds.length === 0) return [];
   let query = supabase
     .from("transactions")
-    .select("id, account_id, trade_date, activity, description, symbol, amount, currency")
+    .select("id, account_id, trade_date, activity, description, symbol, amount, currency, quantity, raw")
     .in("account_id", accountIds)
     .order("trade_date", { ascending: false });
   if (opts.sinceDate) query = query.gte("trade_date", opts.sinceDate);
+  if (opts.activities && opts.activities.length) query = query.in("activity", opts.activities);
   if (opts.limit) query = query.limit(opts.limit);
-  const { data } = await query;
-  return (data ?? []).map((t) => ({ ...t, amount: Number(t.amount) }));
+  const [{ data }, { data: accts }] = await Promise.all([
+    query,
+    supabase.from("accounts").select("id, custodian, account_number_masked").in("id", accountIds),
+  ]);
+  const byAccount = new Map((accts ?? []).map((a) => [a.id, a]));
+  return (data ?? []).map((t) => {
+    const acct = byAccount.get(t.account_id);
+    const raw = (t.raw ?? {}) as { price_per_share?: number | null; type?: string | null };
+    return {
+      id: t.id,
+      account_id: t.account_id,
+      trade_date: t.trade_date,
+      activity: t.activity,
+      description: t.description,
+      symbol: t.symbol,
+      amount: Number(t.amount),
+      currency: t.currency,
+      quantity: t.quantity === null ? null : Number(t.quantity),
+      pricePerShare: raw.price_per_share == null ? null : Number(raw.price_per_share),
+      custodian: acct?.custodian ?? "other",
+      accountMasked: acct?.account_number_masked ?? "",
+      rawType: raw.type ?? null,
+    };
+  });
 }
 
 export async function performanceSeries(scope: Scope, scopeId: string, period: "ytd" | "one_year") {
