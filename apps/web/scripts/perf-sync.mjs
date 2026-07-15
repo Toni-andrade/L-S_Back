@@ -89,7 +89,7 @@ async function periodMetrics(entityId, start, end) {
 
 async function monthMovers(entityId, start, end) {
   const json = await query({
-    columns: [{ key: "change_in_value" }, { key: SYMBOL }, { key: ASSET_CLASS }],
+    columns: [{ key: "change_in_value" }, { key: "inflow" }, { key: SYMBOL }, { key: ASSET_CLASS }],
     groupings: [{ key: "position" }],
     portfolio_type: "ENTITY",
     portfolio_id: [Number(entityId)],
@@ -97,12 +97,28 @@ async function monthMovers(entityId, start, end) {
     end_date: end,
   });
   const positions = (json.data?.attributes?.total?.children ?? [])
-    .map((p) => ({
-      name: p.name ?? null,
-      symbol: p.columns?.[SYMBOL] ?? null,
-      change: num(p.columns?.change_in_value) ?? 0,
-    }))
-    .filter((p) => p.change !== 0);
+    .map((p) => {
+      const chg = num(p.columns?.change_in_value) ?? 0;
+      const flow = num(p.columns?.inflow) ?? 0;
+      return {
+        name: p.name ?? null,
+        symbol: p.columns?.[SYMBOL] ?? null,
+        assetClass: p.columns?.[ASSET_CLASS] ?? "",
+        // Performance gain = total value change minus money that flowed INTO the
+        // position (deposits / buys). This isolates market performance so a new
+        // purchase or a cash deposit is not counted as a "gainer".
+        change: chg - flow,
+      };
+    })
+    .filter((p) => {
+      if (Math.abs(p.change) < 1) return false;
+      const ac = (p.assetClass ?? "").toLowerCase();
+      const nm = (p.name ?? "").toLowerCase();
+      // Exclude cash & equivalents (not a performance mover).
+      if (ac.includes("cash") || nm.includes("bank deposit") || nm === "cash") return false;
+      return true;
+    })
+    .map(({ name, symbol, change }) => ({ name, symbol, change }));
   const gainers = [...positions].sort((a, b) => b.change - a.change).slice(0, 5);
   const losers = [...positions].sort((a, b) => a.change - b.change).slice(0, 5);
   return [...gainers, ...losers.filter((l) => !gainers.includes(l))];
