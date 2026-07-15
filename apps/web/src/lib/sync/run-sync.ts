@@ -233,6 +233,16 @@ export async function runAddeparSync(options: {
       } else throw e;
     }
 
+    // 5b. Incremental performance history: append today's cumulative-TWR point
+    // per client that already has a since-inception series. History is
+    // persisted in Supabase; we never re-fetch it (see perf-history.mjs for the
+    // one-time inception backfill). ~1 query per client, degrades on 403.
+    try {
+      await appendPerformanceHistory(config, service, asOf, stats);
+    } catch (e) {
+      if (!(e instanceof AddeparLicenseError)) throw e;
+    }
+
     // Flags on every snapshot write
     const flagStats = await recomputeAllFlags(service, snapshot.id, asOf);
     stats.flag_scopes = flagStats.scopes;
@@ -360,4 +370,71 @@ async function pullPerformance(
     }
   }
   stats.performance_points = points;
+}
+
+/**
+ * Incremental since-inception history: for each client that already has a
+ * since_inception series, append today's cumulative-TWR point (anchored at the
+ * stored inception). The historical months are immutable and never re-fetched;
+ * the one-time inception backfill lives in scripts/perf-history.mjs.
+ */
+async function appendPerformanceHistory(
+  config: AddeparConfig,
+  service: SupabaseClient,
+  asOf: string,
+  stats: Record<string, unknown>,
+) {
+  const twrColumn = process.env.ADDEPAR_TWR_COLUMN ?? "time_weighted_return";
+  const { data: existing } = await service
+    .from("performance_points")
+    .select("scope_id, raw")
+    .eq("scope", "client")
+    .eq("period", "since_inception");
+  if (!existing || existing.length === 0) return;
+
+  // Distinct client -> inception (from any stored point's raw).
+  const inceptionByClient = new Map<string, string>();
+  for (const row of existing) {
+    const inception = (row.raw as { inception?: string } | null)?.inception;
+    if (inception && !inceptionByClient.has(row.scope_id)) {
+      inceptionByClient.set(row.scope_id, inception);
+    }
+  }
+  if (inceptionByClient.size === 0) return;
+
+  const { data: clients } = await service
+    .from("clients")
+    .select("id, addepar_entity_id")
+    .in("id", [...inceptionByClient.keys()])
+    .not("addepar_entity_id", "is", null);
+
+  let appended = 0;
+  for (const c of clients ?? []) {
+    const inception = inceptionByClient.get(c.id);
+    if (!inception) continue;
+    const response = await runPortfolioQuery(config, {
+      portfolioType: "ENTITY",
+      portfolioId: Number(c.addepar_entity_id),
+      startDate: inception,
+      endDate: asOf,
+      columns: [{ key: twrColumn }],
+      groupings: [],
+    });
+    const twr = Number(response.data.attributes.total?.columns?.[twrColumn] ?? NaN);
+    if (!Number.isNaN(twr)) {
+      await service.from("performance_points").upsert(
+        {
+          scope: "client",
+          scope_id: c.id,
+          period: "since_inception",
+          as_of: asOf,
+          twr,
+          raw: { inception },
+        },
+        { onConflict: "scope,scope_id,period,as_of" },
+      );
+      appended += 1;
+    }
+  }
+  stats.history_points_appended = appended;
 }
