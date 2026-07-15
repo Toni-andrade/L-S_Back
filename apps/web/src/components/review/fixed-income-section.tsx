@@ -121,22 +121,39 @@ export function FixedIncomeSection({
               {nextRedemptions.length === 0 ? (
                 <p className="text-sm text-slate-400">No upcoming maturities.</p>
               ) : (
-                <ul className="flex flex-col divide-y divide-hairline text-sm">
-                  {nextRedemptions.map((h, i) => (
-                    <li key={i} className="flex items-baseline gap-3 py-1.5">
-                      <span className="w-20 shrink-0 text-xs tabular-nums text-slate-400">
-                        {h.maturityDate}
-                      </span>
-                      <span className="min-w-0 flex-1 truncate text-oxford" title={h.description ?? ""}>
-                        {h.symbol ? <span className="font-mono text-xs text-slate-500">{h.symbol} </span> : null}
-                        {h.description ?? "—"}
-                      </span>
-                      <span className="shrink-0 whitespace-nowrap text-right tabular-nums text-oxford">
-                        {formatCurrencyUS(h.marketValue)}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
+                <div className="overflow-hidden rounded-lg border border-hairline">
+                  <table className="w-full border-collapse text-sm">
+                    <thead>
+                      <tr className="border-b border-hairline bg-app-bg/60 text-left text-[11px] uppercase tracking-wide text-slate-400">
+                        <th className="px-3 py-1.5 font-medium">Symbol</th>
+                        <th className="px-3 py-1.5 font-medium">Security</th>
+                        <th className="px-3 py-1.5 text-right font-medium">Maturity</th>
+                        <th className="px-3 py-1.5 text-right font-medium">Value</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {nextRedemptions.map((h, i) => (
+                        <tr key={i} className="border-b border-hairline last:border-0">
+                          <td className="whitespace-nowrap px-3 py-1.5 font-mono text-xs text-slate-500">
+                            {h.symbol ?? "—"}
+                          </td>
+                          <td
+                            className="max-w-[220px] truncate px-3 py-1.5 text-oxford"
+                            title={h.description ?? ""}
+                          >
+                            {h.description ?? "—"}
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-1.5 text-right tabular-nums text-slate-400">
+                            {h.maturityDate}
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-1.5 text-right tabular-nums text-oxford">
+                            {formatCurrencyUS(h.marketValue)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               )}
             </div>
 
@@ -147,22 +164,33 @@ export function FixedIncomeSection({
               {deposits.length === 0 ? (
                 <p className="text-sm text-slate-400">No recent deposits.</p>
               ) : (
-                <ul className="flex flex-col divide-y divide-hairline text-sm">
-                  {deposits.slice(0, 6).map((d) => (
-                    <li key={d.id} className="flex items-baseline gap-3 py-1.5">
-                      <span className="w-20 shrink-0 text-xs tabular-nums text-slate-400">
-                        {d.trade_date}
-                      </span>
-                      <span className="min-w-0 flex-1 truncate text-xs text-slate-500">
-                        {CUSTODIAN_LABEL[d.custodian] ?? d.custodian}
-                        {d.accountMasked ? ` · ${d.accountMasked}` : ""}
-                      </span>
-                      <span className="shrink-0 whitespace-nowrap text-right tabular-nums text-verde">
-                        {formatCurrencyUS(d.amount)}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
+                <div className="overflow-hidden rounded-lg border border-hairline">
+                  <table className="w-full border-collapse text-sm">
+                    <thead>
+                      <tr className="border-b border-hairline bg-app-bg/60 text-left text-[11px] uppercase tracking-wide text-slate-400">
+                        <th className="px-3 py-1.5 font-medium">Date</th>
+                        <th className="px-3 py-1.5 font-medium">Account</th>
+                        <th className="px-3 py-1.5 text-right font-medium">Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {deposits.slice(0, 6).map((d) => (
+                        <tr key={d.id} className="border-b border-hairline last:border-0">
+                          <td className="whitespace-nowrap px-3 py-1.5 tabular-nums text-slate-400">
+                            {d.trade_date}
+                          </td>
+                          <td className="max-w-[200px] truncate px-3 py-1.5 text-xs text-slate-500">
+                            {CUSTODIAN_LABEL[d.custodian] ?? d.custodian}
+                            {d.accountMasked ? ` · ${d.accountMasked}` : ""}
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-1.5 text-right tabular-nums text-verde">
+                            {formatCurrencyUS(d.amount)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               )}
             </div>
           </div>
