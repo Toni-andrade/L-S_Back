@@ -22,6 +22,10 @@ const CUSTODIAN_LABEL: Record<string, string> = {
   other: "Other",
 };
 
+/** Coupon / return values arrive as fractions (0.047 -> 4.70%). */
+const pct = (fraction: number | null, dp = 2) =>
+  fraction === null ? "—" : formatPercentUS(fraction * 100, dp);
+
 export function FixedIncomeSection({
   holdings,
   deposits,
@@ -41,115 +45,129 @@ export function FixedIncomeSection({
   return (
     <Card className="md:col-span-2">
       <CardHeader>
-        <CardTitle className="flex items-center justify-between">
-          <span>Fixed Income</span>
-          {summary.count > 0 ? (
-            <span className="text-xs font-normal text-slate-400">
-              {formatCurrencyUS(summary.totalMv)} · {summary.count} bonds ·{" "}
-              {summary.avgCoupon !== null ? `${formatPercentBRcoupon(summary.avgCoupon)} avg coupon` : "—"}
-              {summary.avgDuration !== null ? ` · ${summary.avgDuration.toFixed(1)} avg duration` : ""}
-            </span>
-          ) : null}
-        </CardTitle>
+        <CardTitle>Fixed Income</CardTitle>
       </CardHeader>
-      <CardContent className="grid gap-6 lg:grid-cols-2">
-        {/* Maturity breakdown */}
-        <div>
-          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
-            Maturity breakdown
+      <CardContent className="flex flex-col gap-6">
+        {/* Summary strip */}
+        {summary.count > 0 ? (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {[
+              { label: "Market value", value: formatCurrencyUS(summary.totalMv) },
+              { label: "Bonds", value: String(summary.count) },
+              { label: "Avg coupon", value: pct(summary.avgCoupon) },
+              {
+                label: "Avg duration",
+                value: summary.avgDuration !== null ? `${summary.avgDuration.toFixed(1)} yr` : "—",
+              },
+            ].map((k) => (
+              <div key={k.label} className="rounded-lg border border-hairline px-3 py-2">
+                <div className="text-[11px] uppercase tracking-wide text-slate-400">{k.label}</div>
+                <div className="mt-0.5 text-base font-semibold tabular-nums text-oxford">{k.value}</div>
+              </div>
+            ))}
           </div>
-          {buckets.length === 0 ? (
-            <p className="text-sm text-slate-400">No bonds with maturity data.</p>
-          ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-hairline text-left text-xs uppercase tracking-wide text-slate-400">
-                  <th className="py-1.5 font-medium">Bucket</th>
-                  <th className="py-1.5 text-right font-medium">Value</th>
-                  <th className="py-1.5 text-right font-medium">%</th>
-                  <th className="py-1.5 text-right font-medium">Coupon</th>
-                  <th className="py-1.5 text-right font-medium">Dur.</th>
-                </tr>
-              </thead>
-              <tbody>
-                {buckets.map((b) => (
-                  <tr key={b.key} className="border-b border-hairline last:border-0">
-                    <td className="py-1.5 text-oxford">{b.label}</td>
-                    <td className="py-1.5 text-right tabular-nums text-oxford">
-                      {formatCurrencyUS(b.marketValue)}
-                    </td>
-                    <td className="py-1.5 text-right tabular-nums text-slate-500">
-                      {(b.weight * 100).toFixed(0)}%
-                    </td>
-                    <td className="py-1.5 text-right tabular-nums text-slate-500">
-                      {b.avgCoupon !== null ? formatPercentBRcoupon(b.avgCoupon) : "—"}
-                    </td>
-                    <td className="py-1.5 text-right tabular-nums text-slate-500">
-                      {b.avgDuration !== null ? b.avgDuration.toFixed(1) : "—"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
+        ) : null}
 
-        {/* Next redemptions + recent deposits */}
-        <div className="flex flex-col gap-4">
+        <div className="grid gap-6 lg:grid-cols-2">
+          {/* Maturity breakdown */}
           <div>
             <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
-              Next redemptions
+              Maturity ladder
             </div>
-            {nextRedemptions.length === 0 ? (
-              <p className="text-sm text-slate-400">No upcoming maturities.</p>
+            {buckets.length === 0 ? (
+              <p className="text-sm text-slate-400">No bonds with maturity data.</p>
             ) : (
-              <ul className="flex flex-col divide-y divide-hairline text-sm">
-                {nextRedemptions.map((h, i) => (
-                  <li key={i} className="flex items-center justify-between gap-2 py-1.5">
-                    <span className="min-w-0 flex-1 truncate text-oxford">
-                      {h.symbol ? <span className="font-mono text-xs text-slate-500">{h.symbol} </span> : null}
-                      {h.description ?? "—"}
-                    </span>
-                    <span className="shrink-0 text-xs text-slate-400">{h.maturityDate}</span>
-                    <span className="w-24 shrink-0 text-right tabular-nums text-oxford">
-                      {formatCurrencyUS(h.marketValue)}
-                    </span>
-                  </li>
-                ))}
-              </ul>
+              <div className="overflow-hidden rounded-lg border border-hairline">
+                <table className="w-full border-collapse text-sm">
+                  <thead>
+                    <tr className="border-b border-hairline bg-app-bg/60 text-left text-[11px] uppercase tracking-wide text-slate-400">
+                      <th className="px-3 py-1.5 font-medium">Bucket</th>
+                      <th className="px-3 py-1.5 text-right font-medium">Value</th>
+                      <th className="px-3 py-1.5 text-right font-medium">Weight</th>
+                      <th className="px-3 py-1.5 text-right font-medium">Coupon</th>
+                      <th className="px-3 py-1.5 text-right font-medium">Dur.</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {buckets.map((b) => (
+                      <tr key={b.key} className="border-b border-hairline last:border-0">
+                        <td className="whitespace-nowrap px-3 py-1.5 text-oxford">{b.label}</td>
+                        <td className="whitespace-nowrap px-3 py-1.5 text-right tabular-nums text-oxford">
+                          {formatCurrencyUS(b.marketValue)}
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-1.5 text-right tabular-nums text-slate-500">
+                          {(b.weight * 100).toFixed(0)}%
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-1.5 text-right tabular-nums text-slate-500">
+                          {pct(b.avgCoupon)}
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-1.5 text-right tabular-nums text-slate-500">
+                          {b.avgDuration !== null ? b.avgDuration.toFixed(1) : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
 
-          <div>
-            <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
-              Recent deposits
+          {/* Next redemptions + recent deposits */}
+          <div className="flex flex-col gap-5">
+            <div>
+              <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                Next redemptions
+              </div>
+              {nextRedemptions.length === 0 ? (
+                <p className="text-sm text-slate-400">No upcoming maturities.</p>
+              ) : (
+                <ul className="flex flex-col divide-y divide-hairline text-sm">
+                  {nextRedemptions.map((h, i) => (
+                    <li key={i} className="flex items-baseline gap-3 py-1.5">
+                      <span className="w-20 shrink-0 text-xs tabular-nums text-slate-400">
+                        {h.maturityDate}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate text-oxford" title={h.description ?? ""}>
+                        {h.symbol ? <span className="font-mono text-xs text-slate-500">{h.symbol} </span> : null}
+                        {h.description ?? "—"}
+                      </span>
+                      <span className="shrink-0 whitespace-nowrap text-right tabular-nums text-oxford">
+                        {formatCurrencyUS(h.marketValue)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
-            {deposits.length === 0 ? (
-              <p className="text-sm text-slate-400">No recent deposits.</p>
-            ) : (
-              <ul className="flex flex-col divide-y divide-hairline text-sm">
-                {deposits.slice(0, 6).map((d) => (
-                  <li key={d.id} className="flex items-center justify-between gap-2 py-1.5">
-                    <span className="text-slate-400">{d.trade_date}</span>
-                    <span className="min-w-0 flex-1 truncate text-xs text-slate-500">
-                      {CUSTODIAN_LABEL[d.custodian] ?? d.custodian}
-                      {d.accountMasked ? ` · ${d.accountMasked}` : ""}
-                    </span>
-                    <span className="shrink-0 text-right tabular-nums text-verde">
-                      {formatCurrencyUS(d.amount)}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
+
+            <div>
+              <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                Recent deposits
+              </div>
+              {deposits.length === 0 ? (
+                <p className="text-sm text-slate-400">No recent deposits.</p>
+              ) : (
+                <ul className="flex flex-col divide-y divide-hairline text-sm">
+                  {deposits.slice(0, 6).map((d) => (
+                    <li key={d.id} className="flex items-baseline gap-3 py-1.5">
+                      <span className="w-20 shrink-0 text-xs tabular-nums text-slate-400">
+                        {d.trade_date}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate text-xs text-slate-500">
+                        {CUSTODIAN_LABEL[d.custodian] ?? d.custodian}
+                        {d.accountMasked ? ` · ${d.accountMasked}` : ""}
+                      </span>
+                      <span className="shrink-0 whitespace-nowrap text-right tabular-nums text-verde">
+                        {formatCurrencyUS(d.amount)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           </div>
         </div>
       </CardContent>
     </Card>
   );
-}
-
-/** Coupon is a fraction; show as a percent with comma-free en-US style. */
-function formatPercentBRcoupon(fraction: number): string {
-  return formatPercentUS(fraction * 100, 2);
 }

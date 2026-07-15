@@ -28,7 +28,8 @@ import { buttonVariants } from "@/components/ui/button";
 
 export default async function DashboardPage() {
   const user = await requireUser();
-  const [stageCounts, ticketCounts, lastReceived, syncJob, aum, flagsCount, sla, queue] =
+  const sla = await slaBoard();
+  const [stageCounts, ticketCounts, lastReceived, syncJob, aum, flagsCount, queue] =
     await Promise.all([
       intakeStageCounts(),
       ticketRailCounts(),
@@ -36,8 +37,7 @@ export default async function DashboardPage() {
       lastSyncJob(),
       firmAum(),
       openFlagsCount(),
-      slaBoard(),
-      workQueue(user),
+      workQueue(user, sla),
     ]);
   const slaAttention = sla.rows.filter((r) => {
     const worst = worstSlaState(

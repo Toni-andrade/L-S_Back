@@ -113,16 +113,21 @@ export async function recomputeAllFlags(
     service.from("households").select("id"),
     service.from("clients").select("id, household_id"),
   ]);
-  let scopes = 0;
-  let flags = 0;
-  for (const h of households ?? []) {
-    flags += await recomputeFlagsForScope(service, "household", h.id, snapshotId, snapshotAsOf);
-    scopes += 1;
-  }
-  for (const c of clients ?? []) {
+  const scopeList: { scope: "household" | "client"; id: string }[] = [
+    ...(households ?? []).map((h) => ({ scope: "household" as const, id: h.id })),
     // Per-client flags always run (US_SITUS is client-specific even inside a household)
-    flags += await recomputeFlagsForScope(service, "client", c.id, snapshotId, snapshotAsOf);
-    scopes += 1;
+    ...(clients ?? []).map((c) => ({ scope: "client" as const, id: c.id })),
+  ];
+
+  // Process scopes in concurrent batches (DB-bound; safe to parallelize).
+  const CONCURRENCY = 8;
+  let flags = 0;
+  for (let i = 0; i < scopeList.length; i += CONCURRENCY) {
+    const batch = scopeList.slice(i, i + CONCURRENCY);
+    const results = await Promise.all(
+      batch.map((s) => recomputeFlagsForScope(service, s.scope, s.id, snapshotId, snapshotAsOf)),
+    );
+    flags += results.reduce((a, b) => a + b, 0);
   }
-  return { scopes, flags };
+  return { scopes: scopeList.length, flags };
 }

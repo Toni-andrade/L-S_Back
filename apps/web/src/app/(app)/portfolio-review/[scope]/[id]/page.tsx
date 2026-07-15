@@ -143,20 +143,14 @@ export default async function ReviewPage({
     .order("as_of", { ascending: false })
     .limit(1)
     .maybeSingle();
-  const startHoldings = startSnap ? await holdingsForScope(scope, id, startSnap.id) : [];
-  const startMv = startHoldings.reduce((s, h) => s + h.market_value, 0);
-  const windowTxns = await transactionsForScope(scope, id, { sinceDate: windowStartDate });
-  const changes = startSnap ? computePortfolioChanges(startMv, totalMv, windowTxns) : null;
-
-  const activity = await activityForScope(scope, id, "trailing_30d");
-
   // Client relationship: contacts timeline + SLA (client scope only)
-  let relationship: {
+  type Relationship = {
     assessments: ReturnType<typeof assessClientSla>;
     contacts: Awaited<ReturnType<typeof contactsForClient>>;
     userName: Map<string, string>;
-  } | null = null;
-  if (scope === "client") {
+  };
+  const buildRelationship = async (): Promise<Relationship | null> => {
+    if (scope !== "client") return null;
     const [contacts, policies, lastTouchAt, oldestOpenBlockerAt, { data: users }] =
       await Promise.all([
         contactsForClient(id),
@@ -165,28 +159,35 @@ export default async function ReviewPage({
         oldestOpenBlockerForClient(id),
         supabase.from("users").select("id, name, email"),
       ]);
-    const assessments = assessClientSla(
-      {
-        riskProfile: (entity as { risk_profile?: "conservador" | "moderado" | "agressivo" | null })
-          .risk_profile ?? null,
-        lastTouchAt,
-        activatedAt: null,
-        oldestOpenBlockerAt,
-      },
-      policies,
-    );
-    relationship = {
-      assessments,
+    return {
+      assessments: assessClientSla(
+        {
+          riskProfile:
+            (entity as { risk_profile?: "conservador" | "moderado" | "agressivo" | null })
+              .risk_profile ?? null,
+          lastTouchAt,
+          activatedAt: null,
+          oldestOpenBlockerAt,
+        },
+        policies,
+      ),
       contacts,
       userName: new Map((users ?? []).map((u) => [u.id, u.name || u.email])),
     };
-  }
+  };
 
-  const recentTxns = await transactionsForScope(scope, id, { limit: 20 });
-  const recentDeposits = await transactionsForScope(scope, id, {
-    activities: ["contribution"],
-    limit: 8,
-  });
+  // One parallel round for all the independent scope-level data.
+  const [startHoldings, windowTxns, activity, recentTxns, recentDeposits, relationship] =
+    await Promise.all([
+      startSnap ? holdingsForScope(scope, id, startSnap.id) : Promise.resolve([]),
+      transactionsForScope(scope, id, { sinceDate: windowStartDate }),
+      activityForScope(scope, id, "trailing_30d"),
+      transactionsForScope(scope, id, { limit: 20 }),
+      transactionsForScope(scope, id, { activities: ["contribution"], limit: 8 }),
+      buildRelationship(),
+    ]);
+  const startMv = startHoldings.reduce((s, h) => s + h.market_value, 0);
+  const changes = startSnap ? computePortfolioChanges(startMv, totalMv, windowTxns) : null;
   const fiHoldings = holdings
     .filter((h) => h.maturity_date)
     .map((h) => ({

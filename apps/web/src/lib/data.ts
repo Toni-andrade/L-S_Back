@@ -510,21 +510,58 @@ export async function slaBoard() {
     supabase.from("clients").select("id, name, risk_profile, status, created_at"),
     slaPolicies(),
   ]);
-  const rows = await Promise.all(
-    (clients ?? []).map(async (c) => ({
+  const clientIds = (clients ?? []).map((c) => c.id);
+  if (clientIds.length === 0) return { rows: [], policies };
+
+  // Batch: latest contact + latest review + oldest open blocker across all
+  // clients in 3 queries, reduced in memory (avoids a 3-query-per-client N+1).
+  const [{ data: contacts }, { data: reviews }, { data: blockers }] = await Promise.all([
+    supabase.from("contacts").select("client_id, occurred_at").in("client_id", clientIds),
+    supabase
+      .from("portfolio_reviews")
+      .select("scope_id, reviewed_at")
+      .eq("scope", "client")
+      .in("scope_id", clientIds),
+    supabase
+      .from("portfolio_flags")
+      .select("scope_id, created_at")
+      .eq("scope", "client")
+      .eq("severity", "blocker")
+      .is("acknowledged_at", null)
+      .in("scope_id", clientIds),
+  ]);
+
+  const maxContact = new Map<string, number>();
+  for (const c of contacts ?? []) {
+    const t = new Date(c.occurred_at).getTime();
+    if (t > (maxContact.get(c.client_id) ?? 0)) maxContact.set(c.client_id, t);
+  }
+  const maxReview = new Map<string, number>();
+  for (const r of reviews ?? []) {
+    const t = new Date(r.reviewed_at).getTime();
+    if (t > (maxReview.get(r.scope_id) ?? 0)) maxReview.set(r.scope_id, t);
+  }
+  const minBlocker = new Map<string, number>();
+  for (const b of blockers ?? []) {
+    const t = new Date(b.created_at).getTime();
+    if (t < (minBlocker.get(b.scope_id) ?? Infinity)) minBlocker.set(b.scope_id, t);
+  }
+
+  const rows = (clients ?? []).map((c) => {
+    const touches = [maxContact.get(c.id), maxReview.get(c.id)].filter(
+      (v): v is number => v !== undefined,
+    );
+    const ob = minBlocker.get(c.id);
+    return {
       id: c.id,
       name: c.name,
-      riskProfile: c.risk_profile as
-        | "conservador"
-        | "moderado"
-        | "agressivo"
-        | null,
+      riskProfile: c.risk_profile as "conservador" | "moderado" | "agressivo" | null,
       status: c.status,
-      lastTouchAt: await lastTouchForClient(c.id),
-      oldestOpenBlockerAt: await oldestOpenBlockerForClient(c.id),
+      lastTouchAt: touches.length ? new Date(Math.max(...touches)) : null,
+      oldestOpenBlockerAt: ob !== undefined ? new Date(ob) : null,
       activatedAt: c.status === "active" ? new Date(c.created_at) : null,
-    })),
-  );
+    };
+  });
   return { rows, policies };
 }
 
@@ -605,16 +642,17 @@ export type ActionItem = {
 const SEV_RANK: Record<ActionItem["severity"], number> = { high: 0, medium: 1, low: 2 };
 const bySeverity = (a: ActionItem, b: ActionItem) => SEV_RANK[a.severity] - SEV_RANK[b.severity];
 
-export async function workQueue(user: {
-  id: string;
-  role: "advisor" | "ops" | "admin";
-}): Promise<{ clientActions: ActionItem[]; opsQueue: ActionItem[] }> {
+export async function workQueue(
+  user: { id: string; role: "advisor" | "ops" | "admin" },
+  preloadedSla?: Awaited<ReturnType<typeof slaBoard>>,
+): Promise<{ clientActions: ActionItem[]; opsQueue: ActionItem[] }> {
   const supabase = await createClient();
   const seesAll = user.role === "admin" || user.role === "ops";
 
-  const [{ data: clients }, { data: households }] = await Promise.all([
+  const [{ data: clients }, { data: households }, sla] = await Promise.all([
     supabase.from("clients").select("id, name"),
     supabase.from("households").select("id, name"),
+    preloadedSla ? Promise.resolve(preloadedSla) : slaBoard(),
   ]);
   const clientName = new Map((clients ?? []).map((c) => [c.id, c.name]));
   const hhName = new Map((households ?? []).map((h) => [h.id, h.name]));
@@ -624,7 +662,7 @@ export async function workQueue(user: {
   const clientActions: ActionItem[] = [];
 
   // SLA: reviews due, onboarding, flag-response
-  const { rows, policies } = await slaBoard();
+  const { rows, policies } = sla;
   for (const r of rows) {
     const assess = assessClientSla(
       {
