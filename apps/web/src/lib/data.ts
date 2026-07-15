@@ -866,6 +866,149 @@ export async function workQueue(
   return { clientActions, opsQueue };
 }
 
+// ---------------------------------------------------------------------------
+// Advisor Center: the daily/weekly briefing across the advisor's book.
+// All queries are RLS-scoped and batched (no per-client N+1).
+// ---------------------------------------------------------------------------
+export type AdvisorCenter = {
+  snapshotAsOf: string | null;
+  agingCash: { clientId: string; name: string; cash: number; pct: number }[];
+  redemptions: {
+    clientId: string;
+    name: string;
+    symbol: string | null;
+    description: string | null;
+    maturityDate: string;
+    value: number;
+  }[];
+  newDeposits: {
+    id: string;
+    name: string;
+    custodian: string;
+    trade_date: string;
+    amount: number;
+    description: string | null;
+  }[];
+  newAccounts: { id: string; name: string; masked: string; custodian: string; created: string }[];
+  openings: { id: string; title: string; status: string }[];
+};
+
+export async function advisorCenter(): Promise<AdvisorCenter> {
+  const supabase = await createClient();
+  const snapshot = await latestSnapshot();
+  const now = Date.now();
+  const todayStr = new Date(now).toISOString().slice(0, 10);
+  const weekAgo = new Date(now - 7 * 86_400_000).toISOString().slice(0, 10);
+  const monthAgoIso = new Date(now - 30 * 86_400_000).toISOString();
+  const horizon = new Date(now + 180 * 86_400_000).toISOString().slice(0, 10);
+
+  const [{ data: holdings }, { data: accounts }, { data: clients }, { data: deposits }, { data: openings }] =
+    await Promise.all([
+      snapshot
+        ? supabase
+            .from("holdings")
+            .select("account_id, asset_class, market_value, symbol, description, maturity_date")
+            .eq("snapshot_id", snapshot.id)
+        : Promise.resolve({ data: [] as never[] }),
+      supabase.from("accounts").select("id, client_id, custodian, account_number_masked, created_at"),
+      supabase.from("clients").select("id, name"),
+      supabase
+        .from("transactions")
+        .select("id, account_id, trade_date, amount, description")
+        .eq("activity", "contribution")
+        .gte("trade_date", weekAgo)
+        .order("trade_date", { ascending: false })
+        .limit(20),
+      supabase
+        .from("workflow_runs")
+        .select("id, title, status")
+        .eq("kind", "account_opening")
+        .not("status", "in", "(done,canceled)")
+        .order("created_at", { ascending: false }),
+    ]);
+
+  const clientName = new Map((clients ?? []).map((c) => [c.id, c.name]));
+  const acctById = new Map((accounts ?? []).map((a) => [a.id, a]));
+  const clientOf = (accountId: string) => acctById.get(accountId)?.client_id;
+
+  // Aging cash / cash to deploy: clients with material uninvested cash.
+  const clientMv = new Map<string, number>();
+  const clientCash = new Map<string, number>();
+  for (const h of holdings ?? []) {
+    const cid = clientOf(h.account_id);
+    if (!cid) continue;
+    const mv = Number(h.market_value);
+    clientMv.set(cid, (clientMv.get(cid) ?? 0) + mv);
+    if ((h.asset_class ?? "").toLowerCase().includes("cash")) {
+      clientCash.set(cid, (clientCash.get(cid) ?? 0) + mv);
+    }
+  }
+  const agingCash = [...clientCash.entries()]
+    .map(([clientId, cash]) => ({
+      clientId,
+      name: clientName.get(clientId) ?? "Client",
+      cash,
+      pct: clientMv.get(clientId) ? cash / clientMv.get(clientId)! : 0,
+    }))
+    .filter((x) => x.pct >= 0.05 && x.cash >= 1000)
+    .sort((a, b) => b.cash - a.cash)
+    .slice(0, 10);
+
+  // Next redemptions across the book (next 180 days).
+  const redemptions = (holdings ?? [])
+    .filter((h) => h.maturity_date && h.maturity_date >= todayStr && h.maturity_date <= horizon)
+    .map((h) => {
+      const cid = clientOf(h.account_id) ?? "";
+      return {
+        clientId: cid,
+        name: clientName.get(cid) ?? "Client",
+        symbol: h.symbol,
+        description: h.description,
+        maturityDate: h.maturity_date as string,
+        value: Number(h.market_value),
+      };
+    })
+    .sort((a, b) => a.maturityDate.localeCompare(b.maturityDate))
+    .slice(0, 12);
+
+  // New deposits this week.
+  const newDeposits = (deposits ?? [])
+    .map((d) => {
+      const cid = clientOf(d.account_id);
+      return {
+        id: d.id,
+        name: cid ? (clientName.get(cid) ?? "Client") : "",
+        custodian: acctById.get(d.account_id)?.custodian ?? "other",
+        trade_date: d.trade_date,
+        amount: Number(d.amount),
+        description: d.description,
+      };
+    })
+    .filter((d) => d.name);
+
+  // New account openings in the last 30 days.
+  const newAccounts = (accounts ?? [])
+    .filter((a) => a.created_at >= monthAgoIso)
+    .map((a) => ({
+      id: a.id,
+      name: clientName.get(a.client_id) ?? "Client",
+      masked: a.account_number_masked,
+      custodian: a.custodian,
+      created: a.created_at,
+    }))
+    .sort((a, b) => b.created.localeCompare(a.created))
+    .slice(0, 10);
+
+  return {
+    snapshotAsOf: snapshot?.as_of ?? null,
+    agingCash,
+    redemptions,
+    newDeposits,
+    newAccounts,
+    openings: openings ?? [],
+  };
+}
+
 export function addeparConfigured(): boolean {
   return Boolean(
     process.env.ADDEPAR_SUBDOMAIN &&
