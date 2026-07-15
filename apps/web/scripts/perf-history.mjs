@@ -144,8 +144,76 @@ function monthEndsFrom(startIso) {
   return out;
 }
 
+const point = (clientId, asOf, twr, value, inception) => ({
+  scope: "client",
+  scope_id: clientId,
+  period: "since_inception",
+  as_of: asOf,
+  twr,
+  raw: { market_value: value, inception },
+});
+
+/** One-time full backfill: find inception, build the whole monthly series. */
+async function backfillClient(c) {
+  const inception = await inceptionDate(c.addepar_entity_id);
+  if (!inception) {
+    console.log(`  ${c.name}: no valued history found`);
+    return;
+  }
+  const ends = monthEndsFrom(inception).filter((d) => d > inception);
+  const points = [];
+  for (const end of ends) {
+    const { twr, value } = await twrCum(c.addepar_entity_id, inception, end);
+    if (twr !== null) points.push(point(c.id, end, twr, value, inception));
+  }
+  if (points.length > 0) {
+    await supabase
+      .from("performance_points")
+      .delete()
+      .eq("scope", "client")
+      .eq("scope_id", c.id)
+      .eq("period", "since_inception");
+    const { error } = await supabase.from("performance_points").insert(points);
+    if (error) die(`insert ${c.name}: ${error.message}`);
+  }
+  const last = points[points.length - 1];
+  console.log(
+    `  ${c.name}: FULL backfill, inception ${inception}, ${points.length} points${
+      last ? ` -> ${last.as_of} ${(last.twr * 100).toFixed(1)}%` : ""
+    }`,
+  );
+}
+
+/**
+ * Incremental update: history already in Supabase. Only fetch the point(s) not
+ * yet stored - today plus any month-end that closed since the last run. This is
+ * the daily path: ~1-2 Addepar queries per client, no re-fetching of history.
+ */
+async function updateClient(c, existing) {
+  const inception = existing[0]?.raw?.inception ?? existing[existing.length - 1]?.as_of;
+  const stored = new Set(existing.map((p) => p.as_of));
+  const latest = existing.reduce((a, p) => (p.as_of > a ? p.as_of : a), existing[0].as_of);
+  const targets = monthEndsFrom(latest).filter((d) => d > inception && !stored.has(d));
+  const points = [];
+  for (const end of targets) {
+    const { twr, value } = await twrCum(c.addepar_entity_id, inception, end);
+    if (twr !== null) points.push(point(c.id, end, twr, value, inception));
+  }
+  if (points.length > 0) {
+    const { error } = await supabase
+      .from("performance_points")
+      .upsert(points, { onConflict: "scope,scope_id,period,as_of" });
+    if (error) die(`upsert ${c.name}: ${error.message}`);
+  }
+  const last = points[points.length - 1];
+  console.log(
+    `  ${c.name}: +${points.length} point(s)${last ? ` (latest ${last.as_of} ${(last.twr * 100).toFixed(1)}%)` : " (up to date)"}`,
+  );
+}
+
 async function main() {
   const args = process.argv.slice(2);
+  const force = args.includes("--full"); // force a full re-backfill
   const argIds = args.filter((a) => /^\d+$/.test(a));
 
   let q = supabase.from("clients").select("id, name, addepar_entity_id").not("addepar_entity_id", "is", null);
@@ -154,49 +222,25 @@ async function main() {
   if (!clients?.length) die("no imported clients with addepar_entity_id");
 
   for (const c of clients) {
-    const inception = await inceptionDate(c.addepar_entity_id);
-    if (!inception) {
-      console.log(`  ${c.name}: no valued history found`);
-      continue;
+    const { data: existing } = await supabase
+      .from("performance_points")
+      .select("as_of, raw")
+      .eq("scope", "client")
+      .eq("scope_id", c.id)
+      .eq("period", "since_inception")
+      .order("as_of", { ascending: false });
+    if (existing?.length && !force) {
+      await updateClient(c, existing);
+    } else {
+      await backfillClient(c);
     }
-    const ends = monthEndsFrom(inception).filter((d) => d > inception);
-    const points = [];
-    for (const end of ends) {
-      const { twr, value } = await twrCum(c.addepar_entity_id, inception, end);
-      if (twr === null) continue;
-      points.push({
-        scope: "client",
-        scope_id: c.id,
-        period: "since_inception",
-        as_of: end,
-        twr,
-        raw: { market_value: value, inception },
-      });
-    }
-    if (points.length > 0) {
-      // Clear any prior since_inception points for this client, then insert.
-      await supabase
-        .from("performance_points")
-        .delete()
-        .eq("scope", "client")
-        .eq("scope_id", c.id)
-        .eq("period", "since_inception");
-      const { error } = await supabase.from("performance_points").insert(points);
-      if (error) die(`insert ${c.name}: ${error.message}`);
-    }
-    const last = points[points.length - 1];
-    console.log(
-      `  ${c.name}: inception ${inception}, ${points.length} points${
-        last ? ` -> ${last.as_of} ${(last.twr * 100).toFixed(1)}%` : ""
-      }`,
-    );
   }
 
   await supabase.from("audit_log").insert({
     actor_id: null,
     action: "sync.performance_history",
     entity_type: "performance_points",
-    after: { clients: clients.length },
+    after: { clients: clients.length, mode: force ? "full" : "incremental" },
   });
   console.log("\ndone.");
 }
