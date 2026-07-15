@@ -32,10 +32,20 @@ const die = (m) => {
 const num = (v) => (v === null || v === undefined || v === "" ? null : Number(v));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// Proactive throttle: keep a minimum gap between requests to avoid 429s.
+let lastRequestAt = 0;
+const MIN_GAP_MS = 350;
+async function throttle() {
+  const wait = MIN_GAP_MS - (Date.now() - lastRequestAt);
+  if (wait > 0) await sleep(wait);
+  lastRequestAt = Date.now();
+}
+
 /** POST a portfolio query, retrying on 429/5xx with exponential backoff. */
 async function postQuery(attributes, retries = 6) {
   const body = { data: { type: "portfolio_query", attributes } };
   for (let attempt = 0; ; attempt++) {
+    await throttle();
     const res = await fetch(`${ADDEPAR.base}/v1/portfolio/query`, {
       method: "POST",
       headers: {
@@ -93,7 +103,7 @@ async function valueAt(entityId, date) {
 async function inceptionDate(entityId) {
   const nowY = new Date().getUTCFullYear();
   let year = null;
-  for (let y = 2015; y <= nowY; y++) {
+  for (let y = 2020; y <= nowY; y++) {
     if (await valueAt(entityId, `${y}-12-31`)) {
       year = y;
       break;
