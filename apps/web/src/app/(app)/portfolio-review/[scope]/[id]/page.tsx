@@ -439,34 +439,43 @@ export default async function ReviewPage({
               {recentTxns.length === 0 ? (
                 <p className="py-4 text-center text-sm text-slate-400">No transactions yet.</p>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-[720px] text-sm">
+                <div className="-mx-1 overflow-x-auto rounded-lg border border-hairline">
+                  <table className="w-full min-w-[800px] border-collapse text-sm">
                     <thead>
-                      <tr className="border-b border-hairline text-left text-xs uppercase tracking-wide text-slate-400">
-                        <th className="py-2 font-medium">Date</th>
-                        <th className="py-2 font-medium">Account</th>
-                        <th className="py-2 font-medium">Type</th>
-                        <th className="py-2 font-medium">Symbol</th>
-                        <th className="py-2 font-medium">Security</th>
-                        <th className="py-2 text-right font-medium">Price</th>
-                        <th className="py-2 text-right font-medium">Value</th>
+                      <tr className="border-b border-hairline bg-app-bg/60 text-left text-[11px] uppercase tracking-wide text-slate-400">
+                        <th className="whitespace-nowrap px-3 py-2 font-medium">Date</th>
+                        <th className="whitespace-nowrap px-3 py-2 font-medium">Account</th>
+                        <th className="whitespace-nowrap px-3 py-2 font-medium">Type</th>
+                        <th className="whitespace-nowrap px-3 py-2 font-medium">Symbol</th>
+                        <th className="whitespace-nowrap px-3 py-2 font-medium">Security</th>
+                        <th className="whitespace-nowrap px-3 py-2 text-right font-medium">Price</th>
+                        <th className="whitespace-nowrap px-3 py-2 text-right font-medium">Value</th>
                       </tr>
                     </thead>
                     <tbody>
                       {recentTxns.map((t) => (
                         <tr key={t.id} className="border-b border-hairline last:border-0 hover:bg-app-bg/30">
-                          <td className="py-2 text-slate-400">{t.trade_date}</td>
-                          <td className="py-2 text-xs text-slate-500">
+                          <td className="whitespace-nowrap px-3 py-2 text-slate-400">{t.trade_date}</td>
+                          <td className="whitespace-nowrap px-3 py-2 text-xs text-slate-500">
                             {CUSTODIAN_LABEL[t.custodian] ?? t.custodian}
                             {t.accountMasked ? ` · ${t.accountMasked}` : ""}
                           </td>
-                          <td className="py-2 text-slate-600">{t.rawType ?? t.activity}</td>
-                          <td className="py-2 font-mono text-xs text-slate-500">{t.symbol ?? "—"}</td>
-                          <td className="py-2 max-w-[220px] truncate text-oxford">{t.description ?? "—"}</td>
-                          <td className="py-2 text-right tabular-nums text-slate-500">
+                          <td className="whitespace-nowrap px-3 py-2 text-slate-600">{t.rawType ?? t.activity}</td>
+                          <td className="whitespace-nowrap px-3 py-2 font-mono text-xs text-slate-500">
+                            {t.symbol ?? "—"}
+                          </td>
+                          <td
+                            className="max-w-[240px] truncate px-3 py-2 text-oxford"
+                            title={t.description ?? ""}
+                          >
+                            {t.description ?? "—"}
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-slate-500">
                             {t.pricePerShare !== null ? formatCurrencyUS(t.pricePerShare) : "—"}
                           </td>
-                          <td className={`py-2 text-right tabular-nums ${t.amount >= 0 ? "text-verde" : "text-alert"}`}>
+                          <td
+                            className={`whitespace-nowrap px-3 py-2 text-right tabular-nums ${t.amount >= 0 ? "text-verde" : "text-alert"}`}
+                          >
                             {formatCurrencyUS(t.amount)}
                           </td>
                         </tr>

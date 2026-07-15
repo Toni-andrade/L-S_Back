@@ -23,20 +23,14 @@ const CUSTODIAN_LABEL: Record<string, string> = {
   other: "Other",
 };
 
-export function HoldingsTable({
-  holdings,
-  totalMv,
-}: {
-  holdings: Holding[];
-  totalMv: number;
-}) {
+const TH = "px-3 py-2 font-medium whitespace-nowrap";
+const TD = "px-3 py-2 whitespace-nowrap";
+
+export function HoldingsTable({ holdings, totalMv }: { holdings: Holding[]; totalMv: number }) {
   const [custodian, setCustodian] = useState("");
   const [account, setAccount] = useState("");
 
-  const custodians = useMemo(
-    () => [...new Set(holdings.map((h) => h.custodian))].sort(),
-    [holdings],
-  );
+  const custodians = useMemo(() => [...new Set(holdings.map((h) => h.custodian))].sort(), [holdings]);
   const accounts = useMemo(
     () => [...new Set(holdings.map((h) => h.accountMasked).filter(Boolean))].sort(),
     [holdings],
@@ -46,7 +40,6 @@ export function HoldingsTable({
     (h) => (!custodian || h.custodian === custodian) && (!account || h.accountMasked === account),
   );
 
-  // Group by asset class, subtotal on the filtered set.
   const groups = useMemo(() => {
     const map = new Map<string, Holding[]>();
     for (const h of filtered) {
@@ -65,9 +58,10 @@ export function HoldingsTable({
   const filteredMv = filtered.reduce((s, h) => s + h.market_value, 0);
   const selectClass =
     "rounded-lg border border-hairline bg-white px-2.5 py-1 text-xs text-oxford focus:border-royal focus:outline-none";
-
   const gainPct = (h: Holding) =>
     h.cost_basis && h.cost_basis !== 0 ? (h.unrealized_gain ?? 0) / h.cost_basis : null;
+  const signed = (v: number | null) =>
+    v === null ? "text-slate-300" : v >= 0 ? "text-verde" : "text-alert";
 
   return (
     <div>
@@ -105,29 +99,35 @@ export function HoldingsTable({
         </span>
       </div>
 
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[860px] text-sm">
+      <div className="-mx-1 overflow-x-auto rounded-lg border border-hairline">
+        <table className="w-full min-w-[1120px] border-collapse text-sm">
           <thead>
-            <tr className="border-b border-hairline text-left text-xs uppercase tracking-wide text-slate-400">
-              <th className="py-2 font-medium">Position</th>
-              <th className="py-2 font-medium">Symbol</th>
-              <th className="py-2 font-medium">Account</th>
-              <th className="py-2 text-right font-medium">Cost Basis</th>
-              <th className="py-2 text-right font-medium">Market Value</th>
-              <th className="py-2 text-right font-medium">Unrealized</th>
-              <th className="py-2 text-right font-medium">Gain %</th>
-              <th className="py-2 text-right font-medium">% Port</th>
-              <th className="py-2 text-right font-medium">YTD</th>
-              <th className="py-2 text-right font-medium">1Y</th>
+            <tr className="border-b border-hairline bg-app-bg/60 text-left text-[11px] uppercase tracking-wide text-slate-400">
+              <th className={`${TH} sticky left-0 z-10 bg-app-bg/60`}>Position</th>
+              <th className={TH}>Symbol</th>
+              <th className={TH}>Account</th>
+              <th className={`${TH} text-right`}>Cost Basis</th>
+              <th className={`${TH} text-right`}>Market Value</th>
+              <th className={`${TH} text-right`}>Unrealized</th>
+              <th className={`${TH} text-right`}>Gain %</th>
+              <th className={`${TH} text-right`}>Weight</th>
+              <th className={`${TH} text-right`}>YTD</th>
+              <th className={`${TH} text-right`}>1Y</th>
             </tr>
           </thead>
           <tbody>
             {groups.map((g) => (
-              <FragmentGroup key={g.assetClass} group={g} totalMv={totalMv} gainPct={gainPct} />
+              <FragmentGroup
+                key={g.assetClass}
+                group={g}
+                totalMv={totalMv}
+                gainPct={gainPct}
+                signed={signed}
+              />
             ))}
             {groups.length === 0 ? (
               <tr>
-                <td colSpan={10} className="py-4 text-center text-slate-400">
+                <td colSpan={10} className="px-3 py-4 text-center text-slate-400">
                   No holdings match the filter.
                 </td>
               </tr>
@@ -143,69 +143,59 @@ function FragmentGroup({
   group,
   totalMv,
   gainPct,
+  signed,
 }: {
   group: { assetClass: string; rows: Holding[]; subtotal: number };
   totalMv: number;
   gainPct: (h: Holding) => number | null;
+  signed: (v: number | null) => string;
 }) {
   return (
     <>
-      <tr className="border-b border-hairline bg-app-bg/50 text-xs uppercase tracking-wide text-slate-500">
-        <td className="py-1.5 font-semibold" colSpan={4}>
-          {group.assetClass}
-        </td>
-        <td className="py-1.5 text-right font-semibold tabular-nums text-oxford">
+      <tr className="border-b border-hairline bg-app-bg/40 text-[11px] uppercase tracking-wide text-slate-500">
+        <td className={`${TD} sticky left-0 z-10 bg-app-bg/40 font-semibold`}>{group.assetClass}</td>
+        <td className={TD} colSpan={3} />
+        <td className={`${TD} text-right font-semibold tabular-nums text-oxford`}>
           {formatCurrencyUS(group.subtotal)}
         </td>
-        <td colSpan={2} />
-        <td className="py-1.5 text-right font-semibold tabular-nums text-oxford">
+        <td className={TD} colSpan={2} />
+        <td className={`${TD} text-right font-semibold tabular-nums text-oxford`}>
           {totalMv > 0 ? ((group.subtotal / totalMv) * 100).toFixed(1) : "0.0"}%
         </td>
-        <td colSpan={2} />
+        <td className={TD} colSpan={2} />
       </tr>
       {group.rows.map((h) => {
         const gp = gainPct(h);
         return (
           <tr key={h.id} className="border-b border-hairline last:border-0 hover:bg-app-bg/30">
-            <td className="py-2 pr-2 text-oxford">{h.description ?? h.symbol ?? "—"}</td>
-            <td className="py-2 font-mono text-xs text-slate-500">{h.symbol ?? "—"}</td>
-            <td className="py-2 text-xs text-slate-500">
+            <td
+              className={`${TD} sticky left-0 z-10 max-w-[300px] truncate bg-white text-oxford`}
+              title={h.description ?? h.symbol ?? ""}
+            >
+              {h.description ?? h.symbol ?? "—"}
+            </td>
+            <td className={`${TD} font-mono text-xs text-slate-500`}>{h.symbol ?? "—"}</td>
+            <td className={`${TD} text-xs text-slate-500`}>
               {CUSTODIAN_LABEL[h.custodian] ?? h.custodian}
               {h.accountMasked ? ` · ${h.accountMasked}` : ""}
             </td>
-            <td className="py-2 text-right tabular-nums text-slate-500">
+            <td className={`${TD} text-right tabular-nums text-slate-500`}>
               {h.cost_basis !== null ? formatCurrencyUS(h.cost_basis) : "—"}
             </td>
-            <td className="py-2 text-right tabular-nums text-oxford">{formatCurrencyUS(h.market_value)}</td>
-            <td
-              className={`py-2 text-right tabular-nums ${
-                (h.unrealized_gain ?? 0) >= 0 ? "text-verde" : "text-alert"
-              }`}
-            >
+            <td className={`${TD} text-right tabular-nums text-oxford`}>{formatCurrencyUS(h.market_value)}</td>
+            <td className={`${TD} text-right tabular-nums ${signed(h.unrealized_gain)}`}>
               {h.unrealized_gain !== null ? formatCurrencyUS(h.unrealized_gain) : "—"}
             </td>
-            <td
-              className={`py-2 text-right tabular-nums ${
-                (gp ?? 0) >= 0 ? "text-verde" : "text-alert"
-              }`}
-            >
+            <td className={`${TD} text-right tabular-nums ${signed(gp)}`}>
               {gp !== null ? formatPercentUS(gp * 100, 1) : "—"}
             </td>
-            <td className="py-2 text-right tabular-nums text-slate-500">
+            <td className={`${TD} text-right tabular-nums text-slate-500`}>
               {totalMv > 0 ? ((h.market_value / totalMv) * 100).toFixed(1) : "0.0"}%
             </td>
-            <td
-              className={`py-2 text-right tabular-nums ${
-                h.twr_ytd === null ? "text-slate-300" : h.twr_ytd >= 0 ? "text-verde" : "text-alert"
-              }`}
-            >
+            <td className={`${TD} text-right tabular-nums ${signed(h.twr_ytd)}`}>
               {h.twr_ytd !== null ? formatPercentUS(h.twr_ytd * 100, 1) : "—"}
             </td>
-            <td
-              className={`py-2 text-right tabular-nums ${
-                h.twr_1y === null ? "text-slate-300" : h.twr_1y >= 0 ? "text-verde" : "text-alert"
-              }`}
-            >
+            <td className={`${TD} text-right tabular-nums ${signed(h.twr_1y)}`}>
               {h.twr_1y !== null ? formatPercentUS(h.twr_1y * 100, 1) : "—"}
             </td>
           </tr>
