@@ -14,6 +14,7 @@ import { TwrLine } from "@/components/charts/twr-line";
 import { assessClientSla } from "@ls/domain";
 import { ActionRail } from "@/components/review/action-rail";
 import { ActivitySummaryCard } from "@/components/review/activity-summary";
+import { FixedIncomeSection } from "@/components/review/fixed-income-section";
 import { HoldingsTable } from "@/components/review/holdings-table";
 import { ClientRelationship } from "@/components/contacts/client-relationship";
 import { FeedsStrip } from "@/components/review/feeds-strip";
@@ -173,6 +174,20 @@ export default async function ReviewPage({
   }
 
   const recentTxns = await transactionsForScope(scope, id, { limit: 20 });
+  const recentDeposits = await transactionsForScope(scope, id, {
+    activities: ["contribution"],
+    limit: 8,
+  });
+  const fiHoldings = holdings
+    .filter((h) => h.maturity_date)
+    .map((h) => ({
+      marketValue: h.market_value,
+      maturityDate: h.maturity_date,
+      couponRate: h.coupon_rate,
+      modifiedDuration: h.modified_duration,
+      description: h.description,
+      symbol: h.symbol,
+    }));
   const cashMv = holdings
     .filter((h) => h.asset_class === "Cash & equivalents")
     .reduce((s, h) => s + h.market_value, 0);
@@ -413,6 +428,8 @@ export default async function ReviewPage({
               )}
             </CardContent>
           </Card>
+
+          <FixedIncomeSection holdings={fiHoldings} deposits={recentDeposits} />
 
           <Card className="md:col-span-2">
             <CardHeader>

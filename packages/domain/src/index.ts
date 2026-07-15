@@ -7,5 +7,6 @@ export * from "./intake";
 export * from "./tickets";
 export * from "./activity";
 export * from "./sla";
+export * from "./fixed-income";
 // ./webhook is intentionally NOT re-exported: it is Node-only (node:crypto).
 // Import it via the "@ls/domain/webhook" subpath from server code.
