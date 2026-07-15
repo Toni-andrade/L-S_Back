@@ -14,6 +14,7 @@ import { TwrLine } from "@/components/charts/twr-line";
 import { assessClientSla } from "@ls/domain";
 import { ActionRail } from "@/components/review/action-rail";
 import { ActivitySummaryCard } from "@/components/review/activity-summary";
+import { HoldingsTable } from "@/components/review/holdings-table";
 import { ClientRelationship } from "@/components/contacts/client-relationship";
 import { FeedsStrip } from "@/components/review/feeds-strip";
 import { FlagsPanel } from "@/components/review/flags-panel";
@@ -170,12 +171,6 @@ export default async function ReviewPage({
     .filter((h) => h.asset_class === "Cash & equivalents")
     .reduce((s, h) => s + h.market_value, 0);
 
-  // Holdings grouped by asset class with subtotals; unmapped always visible
-  const grouped = [...byClass.keys()].map((assetClass) => ({
-    assetClass,
-    rows: holdings.filter((h) => (h.asset_class ?? "Unclassified") === assetClass),
-    subtotal: byClass.get(assetClass) ?? 0,
-  }));
 
   return (
     <div>
@@ -403,27 +398,13 @@ export default async function ReviewPage({
               <CardTitle>Holdings</CardTitle>
             </CardHeader>
             <CardContent>
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-hairline text-left text-xs uppercase tracking-wide text-slate-400">
-                    <th className="py-2 font-medium">Position</th>
-                    <th className="py-2 font-medium">Symbol</th>
-                    <th className="py-2 text-right font-medium">Market Value</th>
-                    <th className="py-2 text-right font-medium">Allocation</th>
-                    {!twrUnavailable ? (
-                      <>
-                        <th className="py-2 text-right font-medium">YTD</th>
-                        <th className="py-2 text-right font-medium">1Y</th>
-                      </>
-                    ) : null}
-                  </tr>
-                </thead>
-                <tbody>
-                  {grouped.map((g) => (
-                    <SubtotalGroup key={g.assetClass} group={g} totalMv={totalMv} showReturns={!twrUnavailable} />
-                  ))}
-                </tbody>
-              </table>
+              {holdings.length > 0 ? (
+                <HoldingsTable holdings={holdings} totalMv={totalMv} />
+              ) : (
+                <p className="py-4 text-center text-sm text-slate-400">
+                  No holdings in this snapshot.
+                </p>
+              )}
             </CardContent>
           </Card>
 
@@ -482,48 +463,5 @@ export default async function ReviewPage({
         <ActionRail scope={scope} scopeId={id} addeparConfigured={addeparConfigured()} />
       </div>
     </div>
-  );
-}
-
-function SubtotalGroup({
-  group,
-  totalMv,
-  showReturns,
-}: {
-  group: { assetClass: string; rows: { id: string; description: string | null; symbol: string | null; market_value: number }[]; subtotal: number };
-  totalMv: number;
-  showReturns: boolean;
-}) {
-  return (
-    <>
-      <tr className="bg-app-bg/60">
-        <td colSpan={2} className="py-1.5 pl-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
-          {group.assetClass}
-        </td>
-        <td className="py-1.5 text-right text-xs font-semibold tabular-nums text-slate-500">
-          {formatCurrencyUS(group.subtotal)}
-        </td>
-        <td className="py-1.5 text-right text-xs font-semibold tabular-nums text-slate-500">
-          {totalMv > 0 ? `${((group.subtotal / totalMv) * 100).toFixed(1)}%` : ""}
-        </td>
-        {showReturns ? <td colSpan={2} /> : null}
-      </tr>
-      {group.rows.map((h) => (
-        <tr key={h.id} className="border-b border-hairline last:border-0 hover:bg-app-bg/40">
-          <td className="py-2 text-oxford">{h.description ?? "(unnamed)"}</td>
-          <td className="py-2 text-slate-500">{h.symbol ?? "—"}</td>
-          <td className="py-2 text-right tabular-nums text-oxford">{formatCurrencyUS(h.market_value)}</td>
-          <td className="py-2 text-right tabular-nums text-slate-500">
-            {totalMv > 0 ? `${((h.market_value / totalMv) * 100).toFixed(1)}%` : ""}
-          </td>
-          {showReturns ? (
-            <>
-              <td className="py-2 text-right text-slate-400">—</td>
-              <td className="py-2 text-right text-slate-400">—</td>
-            </>
-          ) : null}
-        </tr>
-      ))}
-    </>
   );
 }

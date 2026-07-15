@@ -15,6 +15,13 @@ export type HoldingRow = {
   market_value: number;
   currency: string;
   weight: number | null;
+  cost_basis: number | null;
+  unrealized_gain: number | null;
+  twr_ytd: number | null;
+  twr_1y: number | null;
+  maturity_date: string | null;
+  coupon_rate: number | null;
+  modified_duration: number | null;
 };
 
 export type AccountRow = {
@@ -90,11 +97,17 @@ export async function snapshotDates(limit = 30): Promise<string[]> {
   return [...new Set((data ?? []).map((s) => s.as_of))];
 }
 
+export type HoldingWithAccount = HoldingRow & {
+  clientId: string;
+  custodian: string;
+  accountMasked: string;
+};
+
 export async function holdingsForScope(
   scope: Scope,
   scopeId: string,
   snapshotId: string,
-): Promise<(HoldingRow & { clientId: string })[]> {
+): Promise<HoldingWithAccount[]> {
   const supabase = await createClient();
   const accountIds = await accountIdsForScope(scope, scopeId);
   if (accountIds.length === 0) return [];
@@ -102,21 +115,37 @@ export async function holdingsForScope(
     supabase
       .from("holdings")
       .select(
-        "id, account_id, as_of, symbol, description, asset_class, quantity, price, market_value, currency, weight",
+        "id, account_id, as_of, symbol, description, asset_class, quantity, price, market_value, currency, weight, cost_basis, unrealized_gain, twr_ytd, twr_1y, maturity_date, coupon_rate, modified_duration",
       )
       .eq("snapshot_id", snapshotId)
       .in("account_id", accountIds),
-    supabase.from("accounts").select("id, client_id").in("id", accountIds),
+    supabase
+      .from("accounts")
+      .select("id, client_id, custodian, account_number_masked")
+      .in("id", accountIds),
   ]);
-  const clientByAccount = new Map((accounts ?? []).map((a) => [a.id, a.client_id]));
-  return (holdings ?? []).map((h) => ({
-    ...h,
-    market_value: Number(h.market_value),
-    quantity: h.quantity === null ? null : Number(h.quantity),
-    price: h.price === null ? null : Number(h.price),
-    weight: h.weight === null ? null : Number(h.weight),
-    clientId: clientByAccount.get(h.account_id) ?? "",
-  }));
+  const byAccount = new Map((accounts ?? []).map((a) => [a.id, a]));
+  const n = (v: unknown) => (v === null || v === undefined ? null : Number(v));
+  return (holdings ?? []).map((h) => {
+    const acct = byAccount.get(h.account_id);
+    return {
+      ...h,
+      market_value: Number(h.market_value),
+      quantity: n(h.quantity),
+      price: n(h.price),
+      weight: n(h.weight),
+      cost_basis: n(h.cost_basis),
+      unrealized_gain: n(h.unrealized_gain),
+      twr_ytd: n(h.twr_ytd),
+      twr_1y: n(h.twr_1y),
+      coupon_rate: n(h.coupon_rate),
+      modified_duration: n(h.modified_duration),
+      maturity_date: h.maturity_date ?? null,
+      clientId: acct?.client_id ?? "",
+      custodian: acct?.custodian ?? "other",
+      accountMasked: acct?.account_number_masked ?? "",
+    };
+  });
 }
 
 export async function transactionsForScope(

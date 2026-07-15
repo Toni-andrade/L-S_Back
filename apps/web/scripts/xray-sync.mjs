@@ -32,8 +32,13 @@ const COL = {
   symbol: env.ADDEPAR_COL_SYMBOL ?? "_md_ticker",
   securityType: env.ADDEPAR_COL_SECURITY_TYPE ?? "actual_security_type",
   country: env.ADDEPAR_COL_COUNTRY ?? "country",
+  costBasis: "cost_basis",
+  maturityDate: "maturity_date",
+  couponRate: "coupon_rate",
+  modifiedDuration: "modified_duration",
 };
 const COL_KEYS = [...new Set(Object.values(COL))];
+const TWR = env.ADDEPAR_TWR_COLUMN ?? "time_weighted_return";
 
 const ADDEPAR = {
   base: `https://${env.ADDEPAR_SUBDOMAIN}.addepar.com/api`,
@@ -86,6 +91,44 @@ async function positionsForEntity(entityId) {
   return { leaves, accounts };
 }
 
+/** Per (account, position) TWR over a window, keyed "acctEntity:posEntity". */
+async function twrByPosition(entityId, start, end) {
+  const body = {
+    data: {
+      type: "portfolio_query",
+      attributes: {
+        columns: [{ key: TWR }],
+        groupings: [{ key: "holding_account" }, { key: "position" }],
+        portfolio_type: "ENTITY",
+        portfolio_id: [Number(entityId)],
+        start_date: start,
+        end_date: end,
+      },
+    },
+  };
+  const res = await fetch(`${ADDEPAR.base}/v1/portfolio/query`, {
+    method: "POST",
+    headers: {
+      Authorization: ADDEPAR.auth,
+      "Addepar-Firm": ADDEPAR.firm,
+      Accept: "application/vnd.api+json",
+      "Content-Type": "application/vnd.api+json",
+    },
+    body: JSON.stringify(body),
+  });
+  const map = new Map();
+  if (!res.ok) return map; // TWR is best-effort; degrade silently
+  const json = await res.json();
+  for (const acct of json.data?.attributes?.total?.children ?? []) {
+    for (const pos of acct.children ?? []) {
+      if (acct.entity_id != null && pos.entity_id != null) {
+        map.set(`${acct.entity_id}:${pos.entity_id}`, num(pos.columns?.[TWR]));
+      }
+    }
+  }
+  return map;
+}
+
 async function main() {
   const argIds = process.argv.slice(2).filter((a) => /^\d+$/.test(a));
 
@@ -111,11 +154,22 @@ async function main() {
     .select("id")
     .single();
 
+  const yearStart = `${new Date().getUTCFullYear()}-01-01`;
+  const oneYearAgo = (() => {
+    const d = new Date();
+    d.setUTCFullYear(d.getUTCFullYear() - 1);
+    return d.toISOString().slice(0, 10);
+  })();
+
   const rows = [];
   let unmappedMv = 0;
   const perClient = [];
   for (const c of clients) {
     const { leaves } = await positionsForEntity(c.addepar_entity_id);
+    const [twrYtd, twr1y] = await Promise.all([
+      twrByPosition(c.addepar_entity_id, yearStart, today()),
+      twrByPosition(c.addepar_entity_id, oneYearAgo, today()),
+    ]);
     let clientMv = 0;
     let held = 0;
     for (const { acct, pos } of leaves) {
@@ -128,6 +182,8 @@ async function main() {
         continue;
       }
       held++;
+      const cost = num(pos.columns?.[COL.costBasis]);
+      const key = `${acct.entity_id}:${pos.entity_id}`;
       rows.push({
         snapshot_id: snapshot.id,
         account_id: accountId,
@@ -140,6 +196,13 @@ async function main() {
         price: num(pos.columns?.[COL.price]),
         market_value: value,
         currency: pos.columns?.[COL.currency] ?? "USD",
+        cost_basis: cost,
+        unrealized_gain: cost === null ? null : value - cost,
+        twr_ytd: twrYtd.get(key) ?? null,
+        twr_1y: twr1y.get(key) ?? null,
+        maturity_date: pos.columns?.[COL.maturityDate] || null,
+        coupon_rate: num(pos.columns?.[COL.couponRate]),
+        modified_duration: num(pos.columns?.[COL.modifiedDuration]),
         raw: {
           sub_asset_class: pos.columns?.[COL.subAssetClass] ?? null,
           security_type: pos.columns?.[COL.securityType] ?? null,
