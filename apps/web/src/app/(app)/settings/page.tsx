@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { saveCannedResponse, setCannedResponseActive } from "@/lib/actions/canned-responses";
 import { updateSlaPolicy } from "@/lib/actions/contacts";
-import { addAllowedEmail, removeAllowedEmail, setUserActive, setUserRole } from "./actions";
+import { addAllowedEmail, removeAllowedEmail, sendUserInvite, setUserActive, setUserRole } from "./actions";
 
 export default async function SettingsPage() {
   const me = await requireRole("admin");
@@ -136,12 +136,20 @@ export default async function SettingsPage() {
                     <span className="text-oxford">{a.email}</span>
                     {a.note ? <span className="ml-2 text-xs text-slate-400">{a.note}</span> : null}
                   </div>
-                  <form action={removeAllowedEmail}>
-                    <input type="hidden" name="id" value={a.id} />
-                    <Button type="submit" variant="ghost" size="sm" className="text-alert">
-                      Remove
-                    </Button>
-                  </form>
+                  <div className="flex items-center gap-1">
+                    <form action={sendUserInvite}>
+                      <input type="hidden" name="email" value={a.email} />
+                      <Button type="submit" variant="ghost" size="sm" title="Email a login invite via Resend">
+                        Invite
+                      </Button>
+                    </form>
+                    <form action={removeAllowedEmail}>
+                      <input type="hidden" name="id" value={a.id} />
+                      <Button type="submit" variant="ghost" size="sm" className="text-alert">
+                        Remove
+                      </Button>
+                    </form>
+                  </div>
                 </li>
               ))}
               {(allowed ?? []).length === 0 ? (
