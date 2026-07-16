@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { slaState, ticketDueAt } from "./tickets";
+import { ageDays, slaDueWithin, slaState, ticketDueAt } from "./tickets";
 
 describe("ticketDueAt", () => {
   // Wed 2026-07-08
@@ -42,5 +42,37 @@ describe("slaState", () => {
     expect(slaState(due, "resolved", new Date("2026-07-10T10:00:00Z"))).toBe("none");
     expect(slaState(due, "closed", new Date("2026-07-10T10:00:00Z"))).toBe("none");
     expect(slaState(null, "new")).toBe("none");
+  });
+});
+
+describe("ageDays", () => {
+  const now = new Date("2026-07-16T12:00:00Z");
+
+  it("floors to whole days", () => {
+    expect(ageDays(new Date("2026-07-13T13:00:00Z"), now)).toBe(2);
+    expect(ageDays(new Date("2026-07-13T11:00:00Z"), now)).toBe(3);
+  });
+
+  it("same-moment and future timestamps read as 0", () => {
+    expect(ageDays(now, now)).toBe(0);
+    expect(ageDays(new Date("2026-07-17T12:00:00Z"), now)).toBe(0);
+  });
+});
+
+describe("slaDueWithin", () => {
+  const now = new Date("2026-07-16T12:00:00Z");
+
+  it("true when due inside the window", () => {
+    expect(slaDueWithin(new Date("2026-07-17T10:00:00Z"), "new", 24, now)).toBe(true);
+  });
+
+  it("false when already breached or outside the window", () => {
+    expect(slaDueWithin(new Date("2026-07-16T11:00:00Z"), "new", 24, now)).toBe(false);
+    expect(slaDueWithin(new Date("2026-07-18T13:00:00Z"), "new", 24, now)).toBe(false);
+  });
+
+  it("false for terminal statuses and missing due dates", () => {
+    expect(slaDueWithin(new Date("2026-07-17T10:00:00Z"), "resolved", 24, now)).toBe(false);
+    expect(slaDueWithin(null, "new", 24, now)).toBe(false);
   });
 });

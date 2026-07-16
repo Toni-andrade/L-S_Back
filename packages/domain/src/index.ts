@@ -5,6 +5,7 @@ export * from "./portfolio";
 export * from "./flags";
 export * from "./intake";
 export * from "./tickets";
+export * from "./workflows";
 export * from "./activity";
 export * from "./sla";
 export * from "./fixed-income";
