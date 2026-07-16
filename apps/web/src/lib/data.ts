@@ -1,5 +1,5 @@
 import "server-only";
-import { annualIncome } from "@ls/domain";
+import { ageDays, annualIncome, slaDueWithin, stepDueState } from "@ls/domain";
 import { createClient } from "@/lib/supabase/server";
 
 export type Scope = "household" | "client";
@@ -352,6 +352,74 @@ export async function ticketRailCounts(): Promise<
     { label: "Pending Reply", count: open.filter((t) => t.status === "waiting_client").length },
     { label: "Due Today", count: dueToday.length },
   ];
+}
+
+/** Per-category open / breached counts for the ticket list header strip. */
+export function ticketCategoryStats(
+  tickets: TicketListRow[],
+  now: Date = new Date(),
+): { category: string; open: number; breached: number }[] {
+  const byCat = new Map<string, { open: number; breached: number }>();
+  for (const t of tickets) {
+    if (t.status === "resolved" || t.status === "closed") continue;
+    const entry = byCat.get(t.category) ?? { open: 0, breached: 0 };
+    entry.open += 1;
+    if (t.due_at && new Date(t.due_at) < now) entry.breached += 1;
+    byCat.set(t.category, entry);
+  }
+  return [...byCat.entries()]
+    .map(([category, v]) => ({ category, ...v }))
+    .sort((a, b) => b.open - a.open);
+}
+
+/** Desk throughput for the ops queue header: today's flow + current risk. */
+export async function ticketThroughput(): Promise<{
+  openedToday: number;
+  resolvedToday: number;
+  breachedNow: number;
+  dueSoon: number;
+}> {
+  const supabase = await createClient();
+  const now = new Date();
+  const dayStart = new Date(now);
+  dayStart.setHours(0, 0, 0, 0);
+
+  const [{ count: openedToday }, { data: resolvedEvents }, tickets] = await Promise.all([
+    supabase
+      .from("tickets")
+      .select("id", { count: "exact", head: true })
+      .gte("created_at", dayStart.toISOString()),
+    supabase
+      .from("ticket_events")
+      .select("ticket_id, meta")
+      .eq("kind", "status_change")
+      .gte("created_at", dayStart.toISOString()),
+    ticketsList(),
+  ]);
+
+  const resolvedTickets = new Set(
+    (resolvedEvents ?? [])
+      .filter((e) => {
+        const to = (e.meta as { to?: string } | null)?.to;
+        return to === "resolved" || to === "closed";
+      })
+      .map((e) => e.ticket_id),
+  );
+
+  let breachedNow = 0;
+  let dueSoon = 0;
+  for (const t of tickets) {
+    if (t.status === "resolved" || t.status === "closed" || !t.due_at) continue;
+    const due = new Date(t.due_at);
+    if (due < now) breachedNow += 1;
+    else if (slaDueWithin(due, t.status, 24, now)) dueSoon += 1;
+  }
+  return {
+    openedToday: openedToday ?? 0,
+    resolvedToday: resolvedTickets.size,
+    breachedNow,
+    dueSoon,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -738,6 +806,158 @@ export async function workflowRunWithSteps(runId: string) {
 }
 
 // ---------------------------------------------------------------------------
+// Onboarding board: every in-flight account-opening run, its current step,
+// aging and overdue-step count. Feeds /onboarding.
+// ---------------------------------------------------------------------------
+export type OnboardingRun = {
+  id: string;
+  title: string;
+  status: string;
+  clientId: string | null;
+  clientName: string | null;
+  accountId: string | null;
+  intakeSubmissionId: string | null;
+  startedAt: string;
+  ageDays: number;
+  doneSteps: number;
+  totalSteps: number;
+  currentStep: { seq: number; title: string; role: string; due_at: string | null } | null;
+  currentStepOverdue: boolean;
+  overdueSteps: number;
+};
+
+export async function onboardingBoard(): Promise<{
+  active: OnboardingRun[];
+  recentlyDone: { id: string; title: string; completed_at: string | null }[];
+}> {
+  const supabase = await createClient();
+  const now = new Date();
+
+  const [{ data: runs }, { data: doneRuns }] = await Promise.all([
+    supabase
+      .from("workflow_runs")
+      .select("id, title, status, client_id, account_id, intake_submission_id, created_at")
+      .eq("kind", "account_opening")
+      .in("status", ["open", "in_progress", "blocked"])
+      .order("created_at"),
+    supabase
+      .from("workflow_runs")
+      .select("id, title, completed_at")
+      .eq("kind", "account_opening")
+      .eq("status", "done")
+      .order("completed_at", { ascending: false })
+      .limit(8),
+  ]);
+
+  type BoardStepRow = {
+    run_id: string;
+    seq: number;
+    title: string;
+    role: string;
+    required: boolean;
+    status: string;
+    due_at: string | null;
+  };
+  const runIds = (runs ?? []).map((r) => r.id);
+  const clientIds = [...new Set((runs ?? []).map((r) => r.client_id).filter(Boolean))] as string[];
+  const [stepsRes, clientsRes] = await Promise.all([
+    runIds.length
+      ? supabase
+          .from("workflow_run_steps")
+          .select("run_id, seq, title, role, required, status, due_at")
+          .in("run_id", runIds)
+          .order("seq")
+      : Promise.resolve({ data: null }),
+    clientIds.length
+      ? supabase.from("clients").select("id, name").in("id", clientIds)
+      : Promise.resolve({ data: null }),
+  ]);
+  const steps = (stepsRes.data ?? []) as BoardStepRow[];
+  const clients = (clientsRes.data ?? []) as { id: string; name: string }[];
+  const clientName = new Map(clients.map((c) => [c.id, c.name]));
+
+  const stepsByRun = new Map<string, BoardStepRow[]>();
+  for (const s of steps) {
+    const list = stepsByRun.get(s.run_id) ?? [];
+    list.push(s);
+    stepsByRun.set(s.run_id, list);
+  }
+
+  const active: OnboardingRun[] = (runs ?? []).map((r) => {
+    const runSteps = stepsByRun.get(r.id) ?? [];
+    const done = runSteps.filter((s) => s.status === "done" || s.status === "skipped");
+    const current =
+      runSteps.find((s) => s.status !== "done" && s.status !== "skipped") ?? null;
+    const overdue = runSteps.filter(
+      (s) =>
+        stepDueState(
+          s.due_at ? new Date(s.due_at) : null,
+          s.status as "todo" | "done" | "skipped" | "blocked",
+          now,
+        ) === "overdue",
+    ).length;
+    return {
+      id: r.id,
+      title: r.title,
+      status: r.status,
+      clientId: r.client_id,
+      clientName: r.client_id ? (clientName.get(r.client_id) ?? null) : null,
+      accountId: r.account_id,
+      intakeSubmissionId: r.intake_submission_id,
+      startedAt: r.created_at,
+      ageDays: ageDays(new Date(r.created_at), now),
+      doneSteps: done.length,
+      totalSteps: runSteps.length,
+      currentStep: current
+        ? { seq: current.seq, title: current.title, role: current.role, due_at: current.due_at }
+        : null,
+      currentStepOverdue: current
+        ? stepDueState(
+            current.due_at ? new Date(current.due_at) : null,
+            current.status as "todo" | "done" | "skipped" | "blocked",
+            now,
+          ) === "overdue"
+        : false,
+      overdueSteps: overdue,
+    };
+  });
+
+  return { active, recentlyDone: doneRuns ?? [] };
+}
+
+// ---------------------------------------------------------------------------
+// Notifications (in-app; owner-scoped by RLS)
+// ---------------------------------------------------------------------------
+export type NotificationRow = {
+  id: string;
+  kind: string;
+  title: string;
+  body: string | null;
+  href: string | null;
+  read_at: string | null;
+  created_at: string;
+};
+
+export async function notificationsList(limit = 50): Promise<NotificationRow[]> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("notifications")
+    .select("id, kind, title, body, href, read_at, created_at")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  return (data ?? []) as NotificationRow[];
+}
+
+export async function unreadNotificationCount(): Promise<number> {
+  const supabase = await createClient();
+  const { count } = await supabase
+    .from("notifications")
+    .select("id", { count: "exact", head: true })
+    .is("read_at", null);
+  return count ?? 0;
+}
+
+// ---------------------------------------------------------------------------
 // Work queue: the per-persona action center ("My Day" + Ops queue).
 // Read-only aggregation over flags, SLA, follow-ups, movements, tickets, intake
 // and sync. Client-scoped items respect RLS automatically.
@@ -748,6 +968,8 @@ export type ActionItem = {
   title: string;
   subtitle: string;
   href: string;
+  /** When set, the queue renders a one-click "Claim" (assign to me) button. */
+  claimTicketId?: string;
 };
 
 const SEV_RANK: Record<ActionItem["severity"], number> = { high: 0, medium: 1, low: 2 };
@@ -878,20 +1100,32 @@ export async function workQueue(
     const now = new Date();
     for (const t of tickets) {
       if (t.status === "resolved" || t.status === "closed") continue;
+      const age = ageDays(new Date(t.created_at), now);
+      const ageLabel = age === 0 ? "opened today" : `opened ${age}d ago`;
       if (t.assignee_id === null) {
         opsQueue.push({
           kind: "ticket_unassigned",
           severity: t.priority === "urgent" ? "high" : "medium",
           title: `${t.number}: ${t.title}`,
-          subtitle: `Unassigned · ${t.priority}`,
+          subtitle: `Unassigned · ${t.priority} · ${ageLabel}`,
           href: `/tickets/${t.id}`,
+          claimTicketId: t.id,
         });
       } else if (t.due_at && new Date(t.due_at) < now) {
+        const overdueBy = ageDays(new Date(t.due_at), now);
         opsQueue.push({
           kind: "ticket_breach",
           severity: "high",
           title: `${t.number}: ${t.title}`,
-          subtitle: "SLA breached",
+          subtitle: overdueBy === 0 ? "SLA breached today" : `SLA breached ${overdueBy}d ago`,
+          href: `/tickets/${t.id}`,
+        });
+      } else if (t.due_at && slaDueWithin(new Date(t.due_at), t.status, 24, now)) {
+        opsQueue.push({
+          kind: "ticket_due_soon",
+          severity: "medium",
+          title: `${t.number}: ${t.title}`,
+          subtitle: `SLA due within 24h · ${t.priority}`,
           href: `/tickets/${t.id}`,
         });
       } else if (t.status === "waiting_custodian") {
@@ -899,7 +1133,7 @@ export async function workQueue(
           kind: "ticket_custodian",
           severity: "low",
           title: `${t.number}: ${t.title}`,
-          subtitle: "Waiting on custodian",
+          subtitle: `Waiting on custodian · ${ageLabel}`,
           href: `/tickets/${t.id}`,
         });
       }
@@ -919,11 +1153,12 @@ export async function workQueue(
     // Open workflow runs (playbooks in flight)
     const runs = await workflowRuns({ openOnly: true });
     for (const r of runs) {
+      const runAge = ageDays(new Date(r.created_at), now);
       opsQueue.push({
         kind: "workflow",
         severity: r.status === "blocked" ? "high" : "medium",
         title: r.title,
-        subtitle: `Playbook · ${r.status.replace("_", " ")}`,
+        subtitle: `Playbook · ${r.status.replace("_", " ")} · ${runAge === 0 ? "started today" : `started ${runAge}d ago`}`,
         href: `/workflows/${r.id}`,
       });
     }

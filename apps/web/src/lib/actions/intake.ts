@@ -4,6 +4,7 @@ import {
   INTAKE_STAGES,
   mapIntakePayload,
   parseCsv,
+  stepDueAt,
   ticketDueAt,
   type IntakeStatus,
 } from "@ls/domain";
@@ -97,6 +98,7 @@ export async function convertIntake(formData: FormData): Promise<void> {
   const user = await requireRole("ops", "admin");
   const id = uuid.parse(formData.get("id"));
   const createTicket = formData.get("createTicket") === "on";
+  const startOpening = formData.get("startWorkflow") === "on";
 
   const service = createServiceClient();
   const { data: submission } = await service
@@ -177,9 +179,74 @@ export async function convertIntake(formData: FormData): Promise<void> {
     });
   }
 
+  // Optionally kick off the Account Opening playbook, linked back to this
+  // intake submission so the onboarding thread stays traceable end to end.
+  let runId: string | null = null;
+  if (startOpening) {
+    const { data: template } = await service
+      .from("workflow_templates")
+      .select("id, name, kind")
+      .eq("key", "account_opening")
+      .eq("active", true)
+      .maybeSingle();
+    if (template) {
+      const { data: run, error: runError } = await service
+        .from("workflow_runs")
+        .insert({
+          template_id: template.id,
+          kind: template.kind,
+          title: `${template.name} · ${client.name}`,
+          client_id: client.id,
+          status: "open",
+          started_by: user.id,
+          assigned_to: user.id,
+          intake_submission_id: submission.id,
+        })
+        .select("id")
+        .single();
+      if (runError || !run) throw new Error(`workflow start failed: ${runError?.message}`);
+      runId = run.id;
+
+      const { data: steps } = await service
+        .from("workflow_template_steps")
+        .select("seq, title, role, required, due_days, fields")
+        .eq("template_id", template.id)
+        .order("seq");
+      const now = new Date();
+      if (steps && steps.length > 0) {
+        const { error: stepErr } = await service.from("workflow_run_steps").insert(
+          steps.map((s) => ({
+            run_id: run.id,
+            seq: s.seq,
+            title: s.title,
+            role: s.role,
+            required: s.required,
+            status: "todo",
+            due_at: stepDueAt(now, s.due_days)?.toISOString() ?? null,
+            fields: s.fields ?? null,
+          })),
+        );
+        if (stepErr) throw new Error(`workflow steps failed: ${stepErr.message}`);
+      }
+
+      await writeAudit({
+        action: "workflow.start",
+        entityType: "workflow_runs",
+        entityId: run.id,
+        after: {
+          template: template.kind,
+          client_id: client.id,
+          source: "intake_conversion",
+          intake_submission_id: submission.id,
+        },
+      });
+    }
+  }
+
   revalidatePath("/intake");
   revalidatePath("/clients");
-  redirect(ticketId ? `/tickets/${ticketId}` : `/intake/${id}`);
+  revalidatePath("/onboarding");
+  redirect(runId ? `/workflows/${runId}` : ticketId ? `/tickets/${ticketId}` : `/intake/${id}`);
 }
 
 /**
