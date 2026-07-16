@@ -7,7 +7,13 @@ import { useState } from "react";
 import { NAV_ITEMS } from "./nav-items";
 import { cn } from "@/lib/utils";
 
-export function Sidebar({ ticketCount = 0 }: { ticketCount?: number }) {
+export function Sidebar({
+  ticketCount = 0,
+  notificationCount = 0,
+}: {
+  ticketCount?: number;
+  notificationCount?: number;
+}) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
 
@@ -61,6 +67,11 @@ export function Sidebar({ ticketCount = 0 }: { ticketCount?: number }) {
               {!collapsed && item.label === "Tickets" && ticketCount > 0 ? (
                 <span className="rounded-full bg-royal px-2 py-0.5 text-[11px] font-semibold text-white">
                   {ticketCount}
+                </span>
+              ) : null}
+              {!collapsed && item.label === "Notifications" && notificationCount > 0 ? (
+                <span className="rounded-full bg-alert px-2 py-0.5 text-[11px] font-semibold text-white">
+                  {notificationCount}
                 </span>
               ) : null}
             </Link>

@@ -793,12 +793,14 @@ export async function workflowRunWithSteps(runId: string) {
   const [{ data: run }, { data: steps }] = await Promise.all([
     supabase
       .from("workflow_runs")
-      .select("id, kind, title, status, client_id, assigned_to, started_by, created_at, completed_at")
+      .select(
+        "id, kind, title, status, client_id, account_id, intake_submission_id, assigned_to, started_by, created_at, completed_at",
+      )
       .eq("id", runId)
       .maybeSingle(),
     supabase
       .from("workflow_run_steps")
-      .select("id, seq, title, role, required, status, completed_by, completed_at")
+      .select("id, seq, title, role, required, status, due_at, fields, data, completed_by, completed_at")
       .eq("run_id", runId)
       .order("seq"),
   ]);

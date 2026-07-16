@@ -138,12 +138,16 @@ export default async function IntakeDetailPage({
                       <input type="checkbox" name="createTicket" defaultChecked />
                       Create onboarding ticket
                     </label>
+                    <label className="flex items-center gap-2 text-sm text-slate-600">
+                      <input type="checkbox" name="startWorkflow" defaultChecked />
+                      Start Account Opening playbook
+                    </label>
                     <Button type="submit" className="w-full">
                       Convert
                     </Button>
                     <p className="text-xs text-slate-400">
-                      Creates a prospect client from this submission. A prefilled draft proposal
-                      option arrives with Phase 3.
+                      Creates a prospect client from this submission. With the playbook checked,
+                      the opening lands on the Onboarding board linked back to this lead.
                     </p>
                   </form>
                 </CardContent>

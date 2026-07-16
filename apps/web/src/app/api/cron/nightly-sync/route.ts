@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { notifyTicketBreaches } from "@/lib/notify";
 import { runAddeparSync } from "@/lib/sync/run-sync";
 
 export const maxDuration = 300;
@@ -14,5 +15,18 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   const result = await runAddeparSync({ kind: "addepar_nightly" });
-  return NextResponse.json(result, { status: result.status === "error" ? 500 : 200 });
+
+  // Piggyback on the nightly wake-up: notify assignees of SLA breaches
+  // (deduped per ticket). Never lets a notification failure fail the sync.
+  let ticketBreachNotifications = 0;
+  try {
+    ticketBreachNotifications = await notifyTicketBreaches();
+  } catch (err) {
+    console.error("nightly-sync: breach notification pass failed", err);
+  }
+
+  return NextResponse.json(
+    { ...result, ticketBreachNotifications },
+    { status: result.status === "error" ? 500 : 200 },
+  );
 }

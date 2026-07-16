@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { saveCannedResponse, setCannedResponseActive } from "@/lib/actions/canned-responses";
 import { updateSlaPolicy } from "@/lib/actions/contacts";
 import { addAllowedEmail, removeAllowedEmail, setUserActive, setUserRole } from "./actions";
 
@@ -13,13 +14,17 @@ export default async function SettingsPage() {
   const me = await requireRole("admin");
   const supabase = await createClient();
 
-  const [{ data: users }, { data: allowed }, { data: slas }] = await Promise.all([
+  const [{ data: users }, { data: allowed }, { data: slas }, { data: canned }] = await Promise.all([
     supabase.from("users").select("id, email, name, role, active").order("created_at"),
     supabase.from("allowed_emails").select("id, email, note").order("email"),
     supabase
       .from("sla_policies")
       .select("id, kind, name, threshold_days, business_days, active")
       .order("kind"),
+    supabase
+      .from("canned_responses")
+      .select("id, title, body, category, active")
+      .order("title"),
   ]);
 
   return (
@@ -210,6 +215,77 @@ export default async function SettingsPage() {
             Review cadence varies by risk profile. Thresholds are measured against the client
             contact + review timeline; changes are audit-logged.
           </p>
+        </CardContent>
+      </Card>
+
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle>Canned ticket responses</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <form action={saveCannedResponse} className="flex flex-col gap-2">
+            <div className="flex flex-wrap gap-2">
+              <Input name="title" placeholder="Title (shown in the picker)" required className="max-w-xs" />
+              <select
+                name="category"
+                defaultValue=""
+                className="rounded-lg border border-hairline bg-white px-2 py-1.5 text-sm"
+              >
+                <option value="">Any category</option>
+                <option value="operations">operations</option>
+                <option value="trading">trading</option>
+                <option value="reporting">reporting</option>
+                <option value="tax">tax</option>
+                <option value="onboarding">onboarding</option>
+                <option value="tech">tech</option>
+                <option value="other">other</option>
+              </select>
+            </div>
+            <textarea
+              name="body"
+              required
+              rows={3}
+              placeholder="Response text inserted into the ticket comment box."
+              className="rounded-lg border border-hairline bg-white px-3 py-2 text-sm text-oxford focus:border-royal focus:outline-none"
+            />
+            <div>
+              <Button type="submit">Add Response</Button>
+            </div>
+          </form>
+          <ul className="flex flex-col divide-y divide-hairline text-sm">
+            {(canned ?? []).map((c) => (
+              <li key={c.id} className="flex items-start justify-between gap-3 py-2.5">
+                <div className="min-w-0">
+                  <div className="font-medium text-oxford">
+                    {c.title}
+                    {c.category ? (
+                      <span className="ml-2 text-xs font-normal capitalize text-slate-400">
+                        {c.category}
+                      </span>
+                    ) : null}
+                    {!c.active ? (
+                      <Badge variant="default" className="ml-2">
+                        inactive
+                      </Badge>
+                    ) : null}
+                  </div>
+                  <p className="truncate text-xs text-slate-400">{c.body}</p>
+                </div>
+                <form action={setCannedResponseActive}>
+                  <input type="hidden" name="id" value={c.id} />
+                  <input type="hidden" name="active" value={c.active ? "false" : "true"} />
+                  <Button type="submit" variant="ghost" size="sm">
+                    {c.active ? "Deactivate" : "Reactivate"}
+                  </Button>
+                </form>
+              </li>
+            ))}
+            {(canned ?? []).length === 0 ? (
+              <li className="py-2 text-slate-400">
+                No canned responses yet. They appear in the comment box on every ticket.
+              </li>
+            ) : null}
+          </ul>
         </CardContent>
       </Card>
     </div>

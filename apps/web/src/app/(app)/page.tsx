@@ -19,6 +19,7 @@ import {
   openFlagsCount,
   slaBoard,
   ticketRailCounts,
+  ticketThroughput,
   workQueue,
 } from "@/lib/data";
 import { WorkQueue } from "@/components/work-queue";
@@ -31,7 +32,8 @@ import { buttonVariants } from "@/components/ui/button";
 export default async function DashboardPage() {
   const user = await requireUser();
   const sla = await slaBoard();
-  const [stageCounts, ticketCounts, lastReceived, syncJob, aum, income, flagsCount, queue] =
+  const seesAll = userSeesAll(user);
+  const [stageCounts, ticketCounts, lastReceived, syncJob, aum, income, flagsCount, queue, throughput] =
     await Promise.all([
       intakeStageCounts(),
       ticketRailCounts(),
@@ -41,6 +43,7 @@ export default async function DashboardPage() {
       incomeRollup(),
       openFlagsCount(),
       workQueue(user, sla),
+      seesAll ? ticketThroughput() : Promise.resolve(null),
     ]);
   const slaAttention = sla.rows.filter((r) => {
     const worst = worstSlaState(
@@ -93,6 +96,16 @@ export default async function DashboardPage() {
             subtitle="Unassigned and breaching tickets, intake triage, and data-quality items."
             items={queue.opsQueue}
             emptyText="Operations desk is clear."
+            stats={
+              throughput
+                ? [
+                    { label: "Opened today", value: throughput.openedToday },
+                    { label: "Resolved today", value: throughput.resolvedToday },
+                    { label: "Breaching", value: throughput.breachedNow, alert: true },
+                    { label: "Due in 24h", value: throughput.dueSoon, alert: true },
+                  ]
+                : undefined
+            }
           />
         ) : null}
       </div>
