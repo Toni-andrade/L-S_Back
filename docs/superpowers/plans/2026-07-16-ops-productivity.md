@@ -88,9 +88,9 @@ File: `apps/web/src/app/api/cron/nightly-sync/route.ts` (+ helper in `lib/notify
 - [x] After sync: `notifyTicketBreaches()` — open, past-due, assigned tickets -> `notifyOnce(assignee, 'ticket_breach', /tickets/id)`.
 
 ### Task 11: Verify + ship
-- [x] `pnpm test` and `pnpm build` green. (typecheck script exists too)
-- [x] Apply migration 0013 (Supabase MCP if the L&S project is reachable; otherwise hand SQL to user — pooler password is never persisted).
-- [x] Commit(s) + push (deploy skill pattern: push to main triggers Vercel).
+- [x] `pnpm typecheck`, `pnpm test` (109 tests) and `pnpm build` green.
+- [ ] Apply migration 0013 — BLOCKED: Supabase MCP is the Frontier account (L&S project not reachable); pooler password is session-supplied and not available. User must apply (SQL editor or supply password), THEN push.
+- [ ] Push to main (Vercel deploy). Deliberately held until 0013 is applied: workflow pages select the new columns and would 404 against the old schema.
 
 ## Resend placement (user question)
 - Key lives in env: `RESEND_API_KEY` (+ optional `RESEND_FROM`) in Vercel project env vars (Production + Preview) and `apps/web/.env.local` for dev. Never committed.
