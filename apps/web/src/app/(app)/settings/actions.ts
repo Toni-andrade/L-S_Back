@@ -2,6 +2,7 @@
 
 import { userRoleSchema } from "@ls/domain";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { z } from "zod";
 import { writeAudit } from "@/lib/audit";
 import { requireRole } from "@/lib/auth";
@@ -62,7 +63,18 @@ export async function setUserRole(formData: FormData): Promise<void> {
 
 export async function addAllowedEmail(formData: FormData): Promise<void> {
   await requireRole("admin");
-  const email = z.string().trim().toLowerCase().email().parse(formData.get("email"));
+
+  // Invalid input is a user error, not a crash: send back a clear message.
+  const parsed = z
+    .string()
+    .trim()
+    .toLowerCase()
+    .email()
+    .safeParse(formData.get("email"));
+  if (!parsed.success) {
+    redirect("/settings?allow=invalid");
+  }
+  const email = parsed.data;
 
   const supabase = await createClient();
   const { data, error } = await supabase
@@ -70,7 +82,17 @@ export async function addAllowedEmail(formData: FormData): Promise<void> {
     .insert({ email })
     .select("id")
     .single();
-  if (error) throw new Error(error.message);
+
+  if (error) {
+    // 23505 = unique_violation: the email is already allowlisted. That is the
+    // desired end state, so treat it as success (idempotent) with a notice
+    // instead of throwing an unhandled error that reads as "nothing happened".
+    if (error.code === "23505") {
+      revalidatePath("/settings");
+      redirect(`/settings?allow=exists&email=${encodeURIComponent(email)}`);
+    }
+    throw new Error(error.message);
+  }
 
   await writeAudit({
     action: "allowlist.add_email",
@@ -79,6 +101,7 @@ export async function addAllowedEmail(formData: FormData): Promise<void> {
     after: { email },
   });
   revalidatePath("/settings");
+  redirect(`/settings?allow=added&email=${encodeURIComponent(email)}`);
 }
 
 /**

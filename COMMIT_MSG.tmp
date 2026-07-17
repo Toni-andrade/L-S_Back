@@ -1,0 +1,14 @@
+Fix allowlist add: idempotent on duplicates, graceful on invalid, with feedback
+
+Root cause: addAllowedEmail did a raw insert and threw on any error with no
+user feedback. The email column is unique, so re-adding an already-listed
+email raised 23505 and crashed the action, reading as "nothing was added"
+(every name the team re-added was already on the list). A successful add also
+gave no confirmation.
+
+Fix: validate with safeParse (invalid gives a notice, not a crash); catch
+23505 and treat an existing email as success (idempotent); redirect back to
+/settings with an added / already-listed / invalid notice banner. Verified
+against the live DB: table writable, duplicate raises 23505.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>

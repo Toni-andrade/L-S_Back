@@ -10,9 +10,23 @@ import { saveCannedResponse, setCannedResponseActive } from "@/lib/actions/canne
 import { updateSlaPolicy } from "@/lib/actions/contacts";
 import { addAllowedEmail, removeAllowedEmail, sendUserInvite, setUserActive, setUserRole } from "./actions";
 
-export default async function SettingsPage() {
+export default async function SettingsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ allow?: string; email?: string }>;
+}) {
   const me = await requireRole("admin");
   const supabase = await createClient();
+  const { allow, email: allowEmail } = await searchParams;
+
+  const allowNotice =
+    allow === "added"
+      ? { tone: "ok" as const, text: `Added ${allowEmail ?? "email"} to the allowlist.` }
+      : allow === "exists"
+        ? { tone: "ok" as const, text: `${allowEmail ?? "That email"} is already on the allowlist.` }
+        : allow === "invalid"
+          ? { tone: "alert" as const, text: "That does not look like a valid email address." }
+          : null;
 
   const [{ data: users }, { data: allowed }, { data: slas }, { data: canned }] = await Promise.all([
     supabase.from("users").select("id, email, name, role, active").order("created_at"),
@@ -125,6 +139,17 @@ export default async function SettingsPage() {
             <CardTitle>Signup allowlist</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
+            {allowNotice ? (
+              <p
+                className={`rounded-lg px-3 py-2 text-sm ${
+                  allowNotice.tone === "ok"
+                    ? "bg-verde/10 text-verde"
+                    : "bg-alert/10 text-alert"
+                }`}
+              >
+                {allowNotice.text}
+              </p>
+            ) : null}
             <form action={addAllowedEmail} className="flex gap-2">
               <Input name="email" type="email" placeholder="person@lsinvestment.com" required />
               <Button type="submit">Add</Button>
