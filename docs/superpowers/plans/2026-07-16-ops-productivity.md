@@ -89,8 +89,8 @@ File: `apps/web/src/app/api/cron/nightly-sync/route.ts` (+ helper in `lib/notify
 
 ### Task 11: Verify + ship
 - [x] `pnpm typecheck`, `pnpm test` (109 tests) and `pnpm build` green.
-- [ ] Apply migration 0013 — BLOCKED: Supabase MCP is the Frontier account (L&S project not reachable); pooler password is session-supplied and not available. User must apply (SQL editor or supply password), THEN push.
-- [ ] Push to main (Vercel deploy). Deliberately held until 0013 is applied: workflow pages select the new columns and would 404 against the old schema.
+- [x] Apply migration 0013 — DONE 2026-07-17 via packages/db/scripts/apply-migration.mjs (session pooler, password session-supplied). Verified: 3 tables + RLS, 6 columns, seeds (account_opening 7 due_days / 3 field steps, money_movement 5 / 3).
+- [x] Pushed to main 2026-07-16 (user requested deploy ahead of migration); schema caught up 2026-07-17.
 
 ## Resend placement (user question)
 - Key lives in env: `RESEND_API_KEY` (+ optional `RESEND_FROM`) in Vercel project env vars (Production + Preview) and `apps/web/.env.local` for dev. Never committed.
