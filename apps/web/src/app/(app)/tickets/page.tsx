@@ -3,7 +3,7 @@ import { Ticket } from "lucide-react";
 import Link from "next/link";
 import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/shell/page-header";
-import { TicketsTable, type TicketTableRow } from "@/components/tickets/tickets-table";
+import { TicketsWorkspace, type WorkspaceRow } from "@/components/tickets/tickets-workspace";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { requireUser } from "@/lib/auth";
@@ -28,7 +28,7 @@ function isOpen(t: { status: string }) {
 export default async function TicketsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ view?: string; cat?: string }>;
+  searchParams: Promise<{ view?: string; cat?: string; mode?: string }>;
 }) {
   const user = await requireUser();
   const params = await searchParams;
@@ -38,6 +38,7 @@ export default async function TicketsPage({
   const cat = TICKET_CATEGORIES.includes(params.cat as (typeof TICKET_CATEGORIES)[number])
     ? (params.cat as string)
     : null;
+  const mode: "list" | "board" = params.mode === "board" ? "board" : "list";
 
   const [tickets, usersResult] = await Promise.all([
     ticketsList(),
@@ -47,8 +48,7 @@ export default async function TicketsPage({
 
   const now = new Date();
   const stats = ticketCategoryStats(tickets, now);
-  const withSla: (TicketTableRow & { dueSoon: boolean })[] = tickets.map((t) => ({
-    dueSoon: t.due_at ? slaDueWithin(new Date(t.due_at), t.status, 24, now) : false,
+  const withSla: (WorkspaceRow & { dueSoon: boolean })[] = tickets.map((t) => ({
     id: t.id,
     number: t.number,
     title: t.title,
@@ -59,6 +59,7 @@ export default async function TicketsPage({
     due_at: t.due_at,
     sla: slaState(t.due_at ? new Date(t.due_at) : null, t.status, now),
     ageDays: ageDays(new Date(t.created_at), now),
+    dueSoon: t.due_at ? slaDueWithin(new Date(t.due_at), t.status, 24, now) : false,
   }));
 
   const filtered = withSla.filter((t) => {
@@ -82,8 +83,9 @@ export default async function TicketsPage({
   });
 
   const canBulk = user.role === "ops" || user.role === "admin";
-  const back = `/tickets?view=${view}${cat ? `&cat=${cat}` : ""}`;
-  const viewHref = (v: string, c: string | null) => `/tickets?view=${v}${c ? `&cat=${c}` : ""}`;
+  const href = (v: string, c: string | null, m: string) =>
+    `/tickets?view=${v}${c ? `&cat=${c}` : ""}${m === "board" ? "&mode=board" : ""}`;
+  const back = href(view, cat, mode);
 
   return (
     <div>
@@ -91,16 +93,36 @@ export default async function TicketsPage({
         title="Tickets"
         subtitle="Internal ticketing for operations, trading, reporting, tax and onboarding."
         action={
-          <Link href="/tickets/new" className={buttonVariants({ variant: "primary" })}>
-            New Ticket
-          </Link>
+          <div className="flex items-center gap-2">
+            <div className="flex rounded-lg ring-1 ring-hairline">
+              <Link
+                href={href(view, cat, "list")}
+                className={`rounded-l-lg px-3 py-1.5 text-sm ${
+                  mode === "list" ? "bg-oxford text-white" : "bg-white text-slate-500 hover:text-royal"
+                }`}
+              >
+                List
+              </Link>
+              <Link
+                href={href(view, cat, "board")}
+                className={`rounded-r-lg px-3 py-1.5 text-sm ${
+                  mode === "board" ? "bg-oxford text-white" : "bg-white text-slate-500 hover:text-royal"
+                }`}
+              >
+                Board
+              </Link>
+            </div>
+            <Link href="/tickets/new" className={buttonVariants({ variant: "primary" })}>
+              New Ticket
+            </Link>
+          </div>
         }
       />
 
       {stats.length > 0 ? (
         <div className="mb-4 flex flex-wrap gap-2">
           <Link
-            href={viewHref(view, null)}
+            href={href(view, null, mode)}
             className={`rounded-lg px-3 py-1.5 text-sm ring-1 ring-hairline ${
               cat === null ? "bg-oxford text-white" : "bg-white text-slate-500 hover:text-royal"
             }`}
@@ -110,7 +132,7 @@ export default async function TicketsPage({
           {stats.map((s) => (
             <Link
               key={s.category}
-              href={viewHref(view, s.category)}
+              href={href(view, s.category, mode)}
               className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm ring-1 ring-hairline ${
                 cat === s.category
                   ? "bg-oxford text-white"
@@ -133,7 +155,7 @@ export default async function TicketsPage({
         {VIEWS.map((v) => (
           <Link
             key={v.key}
-            href={viewHref(v.key, cat)}
+            href={href(v.key, cat, mode)}
             className={`rounded-full px-3 py-1 text-sm ${
               view === v.key
                 ? "bg-royal text-white"
@@ -154,7 +176,13 @@ export default async function TicketsPage({
       ) : (
         <Card>
           <CardContent className="pt-5">
-            <TicketsTable tickets={filtered} users={users} back={back} canBulk={canBulk} />
+            <TicketsWorkspace
+              tickets={filtered}
+              users={users}
+              back={back}
+              canBulk={canBulk}
+              mode={mode}
+            />
           </CardContent>
         </Card>
       )}

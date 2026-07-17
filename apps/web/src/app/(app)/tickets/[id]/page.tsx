@@ -1,5 +1,4 @@
 import {
-  TICKET_STATUSES,
   TICKET_STATUS_LABEL,
   slaState,
   type TicketPriority,
@@ -10,16 +9,11 @@ import { notFound } from "next/navigation";
 import { PageHeader } from "@/components/shell/page-header";
 import { CommentBox } from "@/components/tickets/comment-box";
 import { PriorityBadge, SlaBadge } from "@/components/tickets/badges";
+import { StatusSelect } from "@/components/tickets/status-select";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  assignTicket,
-  changeTicketDue,
-  linkTicket,
-  unlinkTicket,
-  updateTicketStatus,
-} from "@/lib/actions/tickets";
+import { assignTicket, changeTicketDue, linkTicket, unlinkTicket } from "@/lib/actions/tickets";
 import { requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 
@@ -154,16 +148,9 @@ export default async function TicketDetailPage({
                 Status
               </CardTitle>
             </CardHeader>
-            <CardContent className="flex flex-col gap-2">
-              {TICKET_STATUSES.filter((s) => s !== status).map((s) => (
-                <form key={s} action={updateTicketStatus}>
-                  <input type="hidden" name="id" value={t.id} />
-                  <input type="hidden" name="to" value={s} />
-                  <Button type="submit" variant="outline" className="w-full">
-                    {TICKET_STATUS_LABEL[s]}
-                  </Button>
-                </form>
-              ))}
+            <CardContent>
+              <StatusSelect id={t.id} status={status} />
+              <p className="mt-2 text-xs text-slate-400">Saves immediately; audit-logged.</p>
             </CardContent>
           </Card>
 

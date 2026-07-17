@@ -162,6 +162,46 @@ export async function assignTicket(formData: FormData): Promise<void> {
   revalidatePath(`/tickets/${id}`);
 }
 
+/** Re-prioritize one ticket; the SLA clock recomputes from creation. */
+export async function changeTicketPriority(formData: FormData): Promise<void> {
+  const user = await requireUser();
+  const id = uuid.parse(formData.get("id"));
+  const to = prioritySchema.parse(formData.get("to"));
+
+  const supabase = await createClient();
+  const { data: before } = await supabase
+    .from("tickets")
+    .select("id, priority, created_at")
+    .eq("id", id)
+    .single();
+  if (!before) throw new Error("ticket not found");
+  if (before.priority === to) return;
+
+  const due = ticketDueAt(new Date(before.created_at), to);
+  const { error } = await supabase
+    .from("tickets")
+    .update({ priority: to, due_at: due.toISOString() })
+    .eq("id", id);
+  if (error) throw new Error(error.message);
+
+  await supabase.from("ticket_events").insert({
+    ticket_id: id,
+    author_id: user.id,
+    kind: "system",
+    body: `Priority: ${before.priority} -> ${to}; SLA recalculated.`,
+    meta: { from: before.priority, to },
+  });
+  await writeAudit({
+    action: "ticket.priority",
+    entityType: "tickets",
+    entityId: id,
+    before: { priority: before.priority },
+    after: { priority: to, due_at: due.toISOString() },
+  });
+  revalidatePath("/tickets");
+  revalidatePath(`/tickets/${id}`);
+}
+
 /** One-click "assign to me" from the ops queue / list views. */
 export async function claimTicket(formData: FormData): Promise<void> {
   const user = await requireUser();
