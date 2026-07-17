@@ -13,6 +13,7 @@ import { StatusSelect } from "@/components/tickets/status-select";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { aiConfigured } from "@/lib/ai";
 import { assignTicket, changeTicketDue, linkTicket, unlinkTicket } from "@/lib/actions/tickets";
 import { requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
@@ -136,6 +137,7 @@ export default async function TicketDetailPage({
               <CommentBox
                 ticketId={t.id}
                 canned={cannedSorted.map((c) => ({ id: c.id, title: c.title, body: c.body }))}
+                aiEnabled={aiConfigured()}
               />
             </CardContent>
           </Card>

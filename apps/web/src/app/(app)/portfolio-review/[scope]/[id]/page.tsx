@@ -8,6 +8,7 @@ import {
 import { ArrowDownRight, ArrowUpRight, Download } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { AiDraftPanel } from "@/components/ai-draft-panel";
 import { AllocationDonut } from "@/components/charts/allocation-donut";
 import { RiskGauge } from "@/components/charts/risk-gauge";
 import { TwrLine } from "@/components/charts/twr-line";
@@ -23,6 +24,8 @@ import { FlagsPanel } from "@/components/review/flags-panel";
 import { PageHeader } from "@/components/shell/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { aiConfigured } from "@/lib/ai";
+import { generatePortfolioRevision } from "@/lib/actions/ai";
 import { requireUser } from "@/lib/auth";
 import {
   activityForScope,
@@ -235,6 +238,17 @@ export default async function ReviewPage({
         mappedAccounts={accountsCount}
         lastSync={sync ? { status: sync.status, finished_at: sync.finished_at, error: sync.error } : null}
       />
+
+      {aiConfigured() && snapshot ? (
+        <div className="mb-4">
+          <AiDraftPanel
+            title="Portfolio revision (AI draft)"
+            description="Drafts a Portuguese revision narrative grounded exclusively in the latest snapshot: allocation, performance and open flags. Numbers are computed by the platform, never by the model."
+            action={generatePortfolioRevision.bind(null, scope, id)}
+            rows={14}
+          />
+        </div>
+      ) : null}
 
       <div className="mb-4 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2 text-sm">

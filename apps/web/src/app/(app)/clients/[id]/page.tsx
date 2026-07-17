@@ -7,11 +7,14 @@ import {
 import { FileText, PieChart, Ticket } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { AiDraftPanel } from "@/components/ai-draft-panel";
 import { ClientRelationship } from "@/components/contacts/client-relationship";
 import { PageHeader } from "@/components/shell/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { aiConfigured } from "@/lib/ai";
+import { suggestClientCheckin } from "@/lib/actions/ai";
 import { updateClientProfile } from "@/lib/actions/clients";
 import { deleteDocument, uploadDocument } from "@/lib/actions/documents";
 import { generateClientStatement } from "@/lib/actions/reports";
@@ -167,6 +170,15 @@ export default async function ClientProfilePage({
       <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
         <div className="flex flex-col gap-6">
           <ClientRelationship clientId={id} assessments={assessments} contacts={contacts} userName={userName} />
+
+          {aiConfigured() ? (
+            <AiDraftPanel
+              title="Check-in message (AI draft)"
+              description="Drafts a Portuguese check-in message grounded in the relationship timeline and recent portfolio movement."
+              action={suggestClientCheckin.bind(null, id)}
+              rows={6}
+            />
+          ) : null}
 
           <Card>
             <CardHeader>

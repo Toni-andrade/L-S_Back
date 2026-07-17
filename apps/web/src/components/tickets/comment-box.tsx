@@ -1,7 +1,9 @@
 "use client";
 
-import { useRef } from "react";
+import { Sparkles } from "lucide-react";
+import { useRef, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
+import { suggestTicketReply } from "@/lib/actions/ai";
 import { commentTicket } from "@/lib/actions/tickets";
 
 const fieldClass =
@@ -10,11 +12,15 @@ const fieldClass =
 export function CommentBox({
   ticketId,
   canned,
+  aiEnabled = false,
 }: {
   ticketId: string;
   canned: { id: string; title: string; body: string }[];
+  aiEnabled?: boolean;
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
 
   return (
     <form action={commentTicket} className="mt-4 flex flex-col gap-2">
@@ -41,7 +47,28 @@ export function CommentBox({
         </select>
       ) : null}
       <textarea name="body" required rows={3} placeholder="Add a comment…" ref={textareaRef} className={fieldClass} />
-      <div className="flex justify-end">
+      {aiError ? <p className="text-xs text-alert">{aiError}</p> : null}
+      <div className="flex items-center justify-end gap-2">
+        {aiEnabled ? (
+          <Button
+            type="button"
+            variant="ghost"
+            disabled={pending}
+            onClick={() =>
+              startTransition(async () => {
+                const r = await suggestTicketReply(ticketId);
+                if (r.error) setAiError(r.error);
+                else if (r.text && textareaRef.current) {
+                  setAiError(null);
+                  textareaRef.current.value = r.text;
+                }
+              })
+            }
+          >
+            <Sparkles className="mr-1 h-3.5 w-3.5" />
+            {pending ? "Drafting…" : "Suggest reply"}
+          </Button>
+        ) : null}
         <Button type="submit" variant="outline">
           Comment
         </Button>
