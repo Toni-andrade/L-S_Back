@@ -1,11 +1,14 @@
 import { formatCurrencyUS, formatPercentUS } from "@ls/domain";
 import { Banknote, CalendarClock, Coins, TrendingDown, Wallet } from "lucide-react";
 import Link from "next/link";
+import { AiSnapshotPanel } from "@/components/ai-snapshot-panel";
 import { PageHeader } from "@/components/shell/page-header";
 import { WorkQueue } from "@/components/work-queue";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { aiConfigured } from "@/lib/ai";
+import { generateAdvisorDaily } from "@/lib/actions/ai-snapshots";
 import { requireUser, userSeesAll } from "@/lib/auth";
-import { advisorCenter, incomeRollup, workQueue } from "@/lib/data";
+import { advisorCenter, aiSnapshotCached, incomeRollup, workQueue } from "@/lib/data";
 
 const CUSTODIAN_LABEL: Record<string, string> = {
   ibkr: "IBKR",
@@ -47,10 +50,11 @@ function SectionCard({
 
 export default async function AdvisorCenterPage() {
   const user = await requireUser();
-  const [center, queue, income] = await Promise.all([
+  const [center, queue, income, dailyBrief] = await Promise.all([
     advisorCenter(),
     workQueue(user),
     incomeRollup(),
+    aiConfigured() ? aiSnapshotCached("advisor_daily", user.id) : Promise.resolve(null),
   ]);
   const firmwide = userSeesAll(user);
 
@@ -69,6 +73,17 @@ export default async function AdvisorCenterPage() {
         title={`${greeting}, ${user.name || user.email}`}
         subtitle={`${dateStr} · your book at a glance${center.snapshotAsOf ? ` · data as of ${center.snapshotAsOf}` : ""}`}
       />
+
+      {aiConfigured() ? (
+        <div className="mb-6">
+          <AiSnapshotPanel
+            title="Briefing do dia (AI)"
+            description="Your book this morning: what moved, what needs attention, the day's agenda, and cited market context from the last 24 hours. Cached for the day; regenerate anytime."
+            initial={dailyBrief}
+            action={generateAdvisorDaily}
+          />
+        </div>
+      ) : null}
 
       {/* Actions needed first */}
       <div className="mb-6">

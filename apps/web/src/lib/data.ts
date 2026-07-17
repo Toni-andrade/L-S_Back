@@ -960,6 +960,25 @@ export async function unreadNotificationCount(): Promise<number> {
 }
 
 // ---------------------------------------------------------------------------
+// AI briefing cache (owner-only via RLS; one row per kind + scope + day)
+// ---------------------------------------------------------------------------
+export async function aiSnapshotCached(
+  kind: "advisor_daily" | "client_weekly",
+  scopeKey: string,
+): Promise<{ content: string; model: string | null; updated_at: string } | null> {
+  const supabase = await createClient();
+  const today = new Date().toISOString().slice(0, 10);
+  const { data } = await supabase
+    .from("ai_snapshots")
+    .select("content, model, updated_at")
+    .eq("kind", kind)
+    .eq("scope_key", scopeKey)
+    .eq("as_of", today)
+    .maybeSingle();
+  return data ?? null;
+}
+
+// ---------------------------------------------------------------------------
 // Work queue: the per-persona action center ("My Day" + Ops queue).
 // Read-only aggregation over flags, SLA, follow-ups, movements, tickets, intake
 // and sync. Client-scoped items respect RLS automatically.

@@ -9,6 +9,7 @@ import { ArrowDownRight, ArrowUpRight, Download } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AiDraftPanel } from "@/components/ai-draft-panel";
+import { AiSnapshotPanel } from "@/components/ai-snapshot-panel";
 import { AllocationDonut } from "@/components/charts/allocation-donut";
 import { RiskGauge } from "@/components/charts/risk-gauge";
 import { TwrLine } from "@/components/charts/twr-line";
@@ -26,10 +27,12 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { aiConfigured } from "@/lib/ai";
 import { generatePortfolioRevision } from "@/lib/actions/ai";
+import { generateClientWeekly } from "@/lib/actions/ai-snapshots";
 import { requireUser } from "@/lib/auth";
 import {
   activityForScope,
   addeparConfigured,
+  aiSnapshotCached,
   contactsForClient,
   flagsForScope,
   holdingsForScope,
@@ -181,7 +184,7 @@ export default async function ReviewPage({
   };
 
   // One parallel round for all the independent scope-level data.
-  const [startHoldings, windowTxns, activity, recentTxns, recentDeposits, relationship] =
+  const [startHoldings, windowTxns, activity, recentTxns, recentDeposits, relationship, weeklyBrief] =
     await Promise.all([
       startSnap ? holdingsForScope(scope, id, startSnap.id) : Promise.resolve([]),
       transactionsForScope(scope, id, { sinceDate: windowStartDate }),
@@ -189,6 +192,9 @@ export default async function ReviewPage({
       transactionsForScope(scope, id, { limit: 20 }),
       transactionsForScope(scope, id, { activities: ["contribution"], limit: 8 }),
       buildRelationship(),
+      aiConfigured()
+        ? aiSnapshotCached("client_weekly", `${scope}:${id}`)
+        : Promise.resolve(null),
     ]);
   const startMv = startHoldings.reduce((s, h) => s + h.market_value, 0);
   const changes = startSnap ? computePortfolioChanges(startMv, totalMv, windowTxns) : null;
@@ -240,7 +246,13 @@ export default async function ReviewPage({
       />
 
       {aiConfigured() && snapshot ? (
-        <div className="mb-4">
+        <div className="mb-4 grid gap-4 lg:grid-cols-2">
+          <AiSnapshotPanel
+            title="Retrato da semana (AI)"
+            description="What changed in this portfolio over the trailing week, next week's agenda, and cited market context. Cached for the day."
+            initial={weeklyBrief}
+            action={generateClientWeekly.bind(null, scope, id)}
+          />
           <AiDraftPanel
             title="Portfolio revision (AI draft)"
             description="Drafts a Portuguese revision narrative grounded exclusively in the latest snapshot: allocation, performance and open flags. Numbers are computed by the platform, never by the model."
